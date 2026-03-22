@@ -9,7 +9,9 @@ export interface Product {
 }
 
 export interface LoyaltyReward {
-  id: string; name: string; description: string; pointsCost: number; isActive: boolean
+  id: string; name: string; description: string; pointsCost: number; isActive: boolean;
+  type: 'COUPON' | 'DISCOUNT' | 'PRODUCT';
+  value: number;
 }
 
 interface ProductStoreContextType {

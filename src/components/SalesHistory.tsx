@@ -182,8 +182,8 @@ export function SalesHistory() {
               <div className="text-2xl font-black font-mono mt-0.5 text-amber-400">{totalBs.toFixed(2)}</div>
             </div>
             <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3">
-              <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Cajero Activo</div>
-              <div className="text-sm font-bold mt-2 truncate text-slate-300">{activeSession.cashier}</div>
+              <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Operador Actual</div>
+              <div className="text-sm font-bold mt-2 truncate text-slate-300">{user?.name}</div>
             </div>
           </div>
 
@@ -208,9 +208,16 @@ export function SalesHistory() {
                         <td className="px-4 py-3 text-[10px] font-bold text-slate-300">{s.customerName || 'Venta General'}</td>
                         <td className="px-4 py-3 text-xs">{s.cashier}</td>
                         <td className="px-4 py-3">
-                           <div className="flex flex-col gap-0.5">
-                              <span className="text-[10px] text-slate-300">{s.items.length} ítems</span>
-                              {s.paymentRef && <span className="text-[9px] text-blue-500 font-mono">Ref: {s.paymentRef}</span>}
+                           <div className="flex flex-col gap-1">
+                              <span className="text-xs font-bold text-slate-300">{s.items.length} ítems:</span>
+                              <div className="flex flex-wrap gap-1">
+                                {s.items.map((item, idx) => (
+                                  <span key={idx} className="bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-[4px] text-[9px] border border-slate-700">
+                                    {item.qty}x {item.name}
+                                  </span>
+                                ))}
+                              </div>
+                              {s.paymentRef && <span className="text-[9px] text-blue-500 font-mono mt-1">Ref: {s.paymentRef}</span>}
                            </div>
                         </td>
                         <td className="px-4 py-3">

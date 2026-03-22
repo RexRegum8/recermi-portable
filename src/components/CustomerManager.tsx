@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getBaseUrl } from '../utils/api'
 import { useAuth } from '../auth/AuthContext'
 import { useProductStore, LoyaltyReward } from '../store/ProductStore'
+import { CustomerProfileModal } from './CustomerProfileModal'
 
 export function CustomerManager() {
   const [customers, setCustomers] = useState<any[]>([])
@@ -142,110 +143,26 @@ export function CustomerManager() {
           )}
         </div>
 
-        {/* Detail Panel */}
-        {selected ? (
-          <aside className="w-[450px] bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 flex flex-col gap-6 shadow-2xl animate-in slide-in-from-right duration-300">
-            <div className="flex justify-between items-start">
-              <div className="flex gap-4 items-center">
-                 <div className="w-16 h-16 bg-slate-800 rounded-3xl flex items-center justify-center text-4xl shadow-2xl border border-slate-700">
-                   {selected.photo ? <img src={selected.photo} className="w-full h-full object-cover rounded-3xl" /> : '👤'}
-                 </div>
-                 <div>
-                   <h2 className="text-xl font-black text-white">{selected.name}</h2>
-                   <p className="text-xs text-slate-500 font-mono">{selected.email || 'Sin Email'}</p>
-                 </div>
-              </div>
-              <button onClick={() => setSelected(null)} className="p-2 text-slate-600 hover:text-white transition-colors">✕</button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-               <div className="bg-slate-950/50 p-4 rounded-3xl border border-slate-800">
-                  <p className="text-[9px] font-black text-slate-600 uppercase mb-1">Puntos Acumulados</p>
-                  <p className="text-2xl font-black text-blue-400 leading-none">{selected.points} pts</p>
-                  {isAdmin && (
-                    <div className="flex gap-1 mt-3">
-                       <button onClick={() => handleUpdatePoints(selected.id, selected.points + 10)} className="bg-blue-600/10 text-blue-500 px-2 py-0.5 rounded-lg text-[10px] font-bold border border-blue-500/20">+10</button>
-                       <button onClick={() => handleUpdatePoints(selected.id, Math.max(0, selected.points - 10))} className="bg-red-600/10 text-red-500 px-2 py-0.5 rounded-lg text-[10px] font-bold border border-red-500/20">-10</button>
-                    </div>
-                  )}
-               </div>
-               <div className="bg-slate-950/50 p-4 rounded-3xl border border-slate-800">
-                  <p className="text-[9px] font-black text-slate-600 uppercase mb-1">Documento CI</p>
-                  <p className="text-lg font-bold font-mono text-slate-300">{selected.ci || 'P-00000000'}</p>
-                  <p className="text-[9px] text-slate-500 mt-2">📞 {selected.phone || 'N/A'}</p>
-               </div>
-            </div>
-
-            <div className="flex-1 flex flex-col min-h-0">
-               <div className="flex gap-2 mb-4 bg-slate-950 p-1 rounded-2xl border border-slate-800">
-                  {(['sales', 'tickets', 'orders'] as const).map(tab => (
-                    <button key={tab} onClick={() => setActiveHistoryTab(tab)}
-                      className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeHistoryTab === tab ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 hover:text-slate-300'}`}>
-                      {tab === 'sales' ? 'Compras' : tab === 'tickets' ? 'Servicios' : 'Pedidos'}
-                    </button>
-                  ))}
-               </div>
-
-               <div className="flex-1 overflow-auto custom-scrollbar space-y-2 pr-1">
-                  {activeHistoryTab === 'sales' && (
-                    selected.sales?.length === 0 ? <p className="text-center py-10 text-[10px] text-slate-700 italic font-bold">Sin historial de facturación</p> :
-                    selected.sales?.map((s: any) => (
-                      <div key={s.id} className="bg-slate-800/40 p-3 rounded-2xl border border-slate-800/50 flex justify-between items-center group hover:border-slate-700">
-                         <div>
-                            <p className="font-bold text-xs text-white">{s.saleNumber}</p>
-                            <p className="text-[9px] text-slate-500">{new Date(s.createdAt).toLocaleDateString()}</p>
-                         </div>
-                         <p className="font-mono font-black text-green-400 text-sm">${s.total.toFixed(2)}</p>
-                      </div>
-                    ))
-                  )}
-
-                  {activeHistoryTab === 'tickets' && (
-                    selected.tickets?.length === 0 ? <p className="text-center py-10 text-[10px] text-slate-700 italic font-bold">Sin historial técnico</p> :
-                    selected.tickets?.map((t: any) => (
-                      <div key={t.id} className="bg-slate-800/40 p-3 rounded-2xl border border-slate-800/50 group hover:border-slate-700 transition-all">
-                         <div className="flex justify-between items-start mb-1">
-                            <p className="font-bold text-xs text-white">{t.tkNumber}</p>
-                            <span className="text-[8px] bg-blue-600/20 text-blue-400 px-1.5 rounded-full font-black uppercase">{t.status}</span>
-                         </div>
-                         <p className="text-[10px] text-slate-400 font-medium">{t.device}</p>
-                         <p className="text-[9px] text-slate-600 italic mt-1 font-mono">Cost: ${t.cost.toFixed(2)}</p>
-                      </div>
-                    ))
-                  )}
-
-                  {activeHistoryTab === 'orders' && (
-                    selected.orders?.length === 0 ? <p className="text-center py-10 text-[10px] text-slate-700 italic font-bold">Sin pedidos online</p> :
-                    selected.orders?.map((o: any) => (
-                      <div key={o.id} className="bg-slate-800/40 p-3 rounded-2xl border border-slate-800/50 flex justify-between items-center group hover:border-slate-700">
-                         <div>
-                            <p className="font-bold text-xs text-white">ORD-{o.id.substring(0,5)}</p>
-                            <p className="text-[9px] text-slate-500">{new Date(o.createdAt).toLocaleDateString()}</p>
-                         </div>
-                         <span className="text-[8px] bg-yellow-600/20 text-yellow-400 px-1.5 rounded-full font-black uppercase">{o.status}</span>
-                      </div>
-                    ))
-                  )}
-               </div>
-            </div>
-
-            <div className="pt-5 border-t border-slate-800 flex gap-3">
-               <button onClick={() => handleDelete(selected.id)} className="flex-1 py-4 bg-red-900/20 border border-red-500/20 text-red-500 rounded-3xl text-xs font-black hover:bg-red-500 hover:text-white transition-all">
-                 ELIMINAR CLIENTE
-               </button>
-               {isAdmin && (
-                  <button onClick={() => setShowRewardsModal(true)} className="flex-1 py-4 bg-blue-600 text-white rounded-3xl text-xs font-black shadow-xl shadow-blue-900/40 transition-all hover:scale-105 active:scale-95">
-                    RECOMPENSAS PUNTOS
-                  </button>
-               )}
-            </div>
-          </aside>
-        ) : (
-          <aside className="w-[450px] bg-slate-900/30 border border-slate-800 border-dashed rounded-[3.5rem] flex flex-col items-center justify-center text-slate-700 opacity-50">
-             <span className="text-7xl mb-6">📂</span>
-             <p className="text-sm font-black uppercase tracking-tighter">Seleccione un Cliente</p>
-            <p className="text-[10px] font-bold mt-2">Para ver perfil detallado e historial</p>
-          </aside>
+        {/* Perfil Modal */}
+        {selected && (
+          <CustomerProfileModal 
+            customer={selected} 
+            isAdmin={isAdmin}
+            onClose={() => setSelected(null)} 
+            onSave={async (updated) => {
+              try {
+                const res = await fetch(`${getBaseUrl()}/api/customers/${selected.id}/admin-update`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(updated)
+                })
+                if (!res.ok) throw new Error()
+                fetchCustomers()
+              } catch (e) {
+                alert('No se pudo actualizar el perfil')
+              }
+            }}
+          />
         )}
       </div>
 

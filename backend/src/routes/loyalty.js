@@ -79,7 +79,16 @@ router.post('/redeem', async (req, res) => {
         where: { id: customerId },
         data: {
           points: { decrement: reward.pointsCost },
-          pendingDiscount: reward.type === 'DISCOUNT' && reward.value ? reward.value : 0
+          pendingDiscount: (reward.type === 'DISCOUNT' || reward.type === 'COUPON') && reward.value ? reward.value : 0
+        }
+      })
+
+      await tx.loyaltyMovement.create({
+        data: {
+          customerId,
+          points: -reward.pointsCost,
+          type: 'REDEEMED',
+          reason: `Canje: ${reward.name}`
         }
       })
       return newCustomer

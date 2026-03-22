@@ -122,7 +122,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const resp = await fetch(`${baseUrl}/api/health`)
           if (resp.ok) {
             if (mounted) {
-              await Promise.all([refreshSetup(), refreshConfig()])
+              const setupResp = await fetch(`${baseUrl}/api/auth/needs-setup`)
+              const setupData = await setupResp.json()
+              const isSetupNeeded = setupData.needsSetup ?? true
+              setNeedsSetup(isSetupNeeded)
+              
+              if (isSetupNeeded) {
+                // If the DB is empty, the current session is definitely invalid
+                localStorage.removeItem('user')
+                setUser(null)
+              }
+              
+              await refreshConfig()
+              
+              // Validate current session if exists
+              if (user) {
+                try {
+                  const uResp = await fetch(`${baseUrl}/api/auth/${user.id}`)
+                  if (!uResp.ok) {
+                    logout()
+                  }
+                } catch (e) { logout() }
+              }
+              
               setIsServerReady(true)
             }
             break

@@ -9,7 +9,7 @@ router.get('/fetch-bcv', async (req, res) => {
     const resp = await fetch('https://ve.dolarapi.com/v1/dolares/oficial')
     const data = await resp.json()
     if (data && data.promedio) {
-      res.json({ price: data.promedio })
+      res.json({ price: data.promedio, date: data.fecha || data.last_update })
     } else {
       res.status(500).json({ error: 'Formato de API no reconocido' })
     }

@@ -1,7 +1,23 @@
 import { createContext, useContext, useState, ReactNode } from 'react'
 
 export interface Customer {
-  id: string; name: string; email: string; phone: string; address: string; points: number; pendingDiscount: number
+  id: string; 
+  name: string; 
+  email: string; 
+  phone: string; 
+  address: string; 
+  points: number; 
+  pendingDiscount: number;
+  photo?: string;
+  ci?: string;
+  birthday?: string;
+  gender?: string;
+  isCompany?: boolean;
+  isSpecialTaxpayer?: boolean;
+  orders?: any[];
+  sales?: any[];
+  tickets?: any[];
+  loyaltyMovements?: any[];
 }
 
 export interface CartItem {
@@ -19,6 +35,7 @@ interface CustomerContextType {
   cart: CartItem[]
   orders: Order[]
   config: any
+  updateCustomer: (data: Customer) => void
   refreshConfig: () => Promise<void>
   registerCustomer: (data: any) => Promise<boolean>
   loginCustomer: (email: string, password: string) => Promise<boolean>
@@ -68,7 +85,9 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
       })
       if (resp.ok) {
         const data = await resp.json()
-        setCustomer({ id: data.id, name: data.name, email: data.email, phone: data.phone, address: data.address, points: data.points, pendingDiscount: data.pendingDiscount })
+        const { password: _, ...customerData } = data
+        setCustomer(customerData as Customer)
+        localStorage.setItem('customer', JSON.stringify(customerData))
         if (data.orders) setOrders(data.orders)
       }
     } catch (e) { console.error(e) }
@@ -96,8 +115,6 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
       })
       if (!resp.ok) return false
       const data = await resp.json()
-      setCustomer(data.customer)
-      localStorage.setItem('customer', JSON.stringify(data.customer))
       localStorage.setItem('customerToken', data.token)
       await refreshProfile()
       return true
@@ -178,12 +195,17 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const updateCustomer = (data: Customer) => {
+    setCustomer(data)
+    localStorage.setItem('customer', JSON.stringify(data))
+  }
+
   // Refresh profile on mount
   useState(() => { refreshProfile() })
 
   return (
     <CustomerContext.Provider value={{ 
-      customer, cart, orders, config, refreshConfig,
+      customer, cart, orders, config, updateCustomer, refreshConfig,
       registerCustomer, loginCustomer, logoutCustomer, 
       addToCart, removeFromCart, updateCartQty, clearCart, cartSubtotal, cartTotal, cartCount, 
       placeOrder, refreshProfile 

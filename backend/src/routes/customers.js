@@ -8,11 +8,24 @@ const JWT_SECRET = process.env.JWT_SECRET || 'rexermi-customer-secret-2024'
 
 // Register Customer
 router.post('/register', async (req, res) => {
-  const { email, password, name, phone, address, ci, photo } = req.body
   try {
+    const { email, password, name, phone, address, ci, photo, birthday, gender, isCompany, isSpecialTaxpayer } = req.body
     const hashedPassword = await bcrypt.hash(password, 10)
     const customer = await prisma.customer.create({
-      data: { email, password: hashedPassword, name, phone, address, ci, photo, points: 0 }
+      data: { 
+        email, 
+        password: hashedPassword, 
+        name, 
+        phone, 
+        address, 
+        ci, 
+        photo, 
+        birthday: birthday ? new Date(birthday) : null,
+        gender,
+        isCompany: !!isCompany,
+        isSpecialTaxpayer: !!isSpecialTaxpayer,
+        points: 0 
+      }
     })
     const { password: _, ...customerData } = customer
     res.status(201).json(customerData)
@@ -50,7 +63,12 @@ router.get('/me', async (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET)
     const customer = await prisma.customer.findUnique({ 
       where: { id: decoded.id },
-      include: { orders: { include: { items: { include: { product: true } } } } }
+      include: { 
+        orders: { include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } },
+        sales: { include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } },
+        tickets: { orderBy: { date: 'desc' } },
+        loyaltyMovements: { orderBy: { createdAt: 'desc' }, take: 20 }
+      }
     })
     const { password: _, ...customerData } = customer
     res.json(customerData)
@@ -67,10 +85,20 @@ router.patch('/me', async (req, res) => {
   const token = authHeader.split(' ')[1]
   try {
     const decoded = jwt.verify(token, JWT_SECRET)
-    const { name, phone, address, ci, photo } = req.body
+    const { name, phone, address, ci, photo, birthday, gender, isCompany, isSpecialTaxpayer } = req.body
     const customer = await prisma.customer.update({
       where: { id: decoded.id },
-      data: { name, phone, address, ci, photo }
+      data: { 
+        name, 
+        phone, 
+        address, 
+        ci, 
+        photo,
+        birthday: birthday ? new Date(birthday) : null,
+        gender,
+        isCompany: isCompany !== undefined ? !!isCompany : undefined,
+        isSpecialTaxpayer: isSpecialTaxpayer !== undefined ? !!isSpecialTaxpayer : undefined
+      }
     })
     const { password: _, ...customerData } = customer
     res.json(customerData)
@@ -140,6 +168,26 @@ router.post('/orders', async (req, res) => {
         where: { id: decoded.id },
         data: { pendingDiscount: 0 }
       })
+
+      // 5. Grant Points
+      const config = await tx.systemConfig.findFirst() || { fidelityEnabled: false, ptsPer10Usd: 1 }
+      if (config.fidelityEnabled) {
+        const pts = Math.floor(total / 10) * config.ptsPer10Usd
+        if (pts > 0) {
+          await tx.customer.update({
+            where: { id: decoded.id },
+            data: { points: { increment: pts } }
+          })
+          await tx.loyaltyMovement.create({
+            data: {
+              customerId: decoded.id,
+              points: pts,
+              type: 'EARNED',
+              reason: `Pedido Web ${newOrder.id.slice(0, 8)}`
+            }
+          })
+        }
+      }
       
       return newOrder
     })
@@ -277,8 +325,12 @@ router.get('/', async (req, res) => {
         points: true,
         pendingDiscount: true,
         photo: true,
+        birthday: true,
+        gender: true,
+        isCompany: true,
+        isSpecialTaxpayer: true,
         createdAt: true,
-        _count: { select: { orders: true } }
+        _count: { select: { orders: true, sales: true } }
       },
       orderBy: { createdAt: 'desc' }
     })
@@ -294,14 +346,10 @@ router.get('/:id', async (req, res) => {
     const customer = await prisma.customer.findUnique({
       where: { id: req.params.id },
       include: {
-        orders: {
-          include: { items: { include: { product: true } } },
-          orderBy: { createdAt: 'desc' }
-        },
-        sales: {
-          include: { items: { include: { product: true } } },
-          orderBy: { createdAt: 'desc' }
-        }
+        orders: { include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } },
+        sales: { include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } },
+        tickets: { orderBy: { date: 'desc' } },
+        loyaltyMovements: { orderBy: { createdAt: 'desc' }, take: 20 }
       }
     })
     if (!customer) return res.status(404).json({ error: 'No encontrado' })
@@ -313,23 +361,41 @@ router.get('/:id', async (req, res) => {
   }
 })
 
-router.get('/:id/details', async (req, res) => {
+// ADMIN: Update customer full profile
+router.patch('/:id/admin-update', async (req, res) => {
+  const { name, email, phone, address, ci, photo, birthday, gender, isCompany, isSpecialTaxpayer, points } = req.body
   try {
-    const customer = await prisma.customer.findUnique({
+    const oldCustomer = await prisma.customer.findUnique({ where: { id: req.params.id } })
+    const customer = await prisma.customer.update({
       where: { id: req.params.id },
-      include: {
-        orders: {
-          include: { items: { include: { product: true } } },
-          orderBy: { createdAt: 'desc' }
-        }
+      data: { 
+        name, 
+        email,
+        phone, 
+        address, 
+        ci, 
+        photo,
+        birthday: birthday ? new Date(birthday) : null,
+        gender,
+        isCompany: isCompany !== undefined ? !!isCompany : undefined,
+        isSpecialTaxpayer: isSpecialTaxpayer !== undefined ? !!isSpecialTaxpayer : undefined,
+        points: points !== undefined ? Number(points) : undefined
       }
     })
-    if (!customer) return res.status(404).json({ error: 'No encontrado' })
-
-    const { password: _, ...customerData } = customer
-    res.json(customerData)
+    
+    if (points !== undefined && oldCustomer && oldCustomer.points !== Number(points)) {
+      await prisma.loyaltyMovement.create({
+        data: {
+          customerId: customer.id,
+          points: Number(points) - oldCustomer.points,
+          type: 'ADMIN_ADJ',
+          reason: 'Ajuste administrativo de perfil'
+        }
+      })
+    }
+    res.json(customer)
   } catch (e) {
-    res.status(500).json({ error: 'Error al obtener detalles' })
+    res.status(400).json({ error: 'Error al actualizar perfil del cliente' })
   }
 })
 
@@ -337,10 +403,21 @@ router.get('/:id/details', async (req, res) => {
 router.patch('/:id', async (req, res) => {
   const { points } = req.body
   try {
+    const oldCustomer = await prisma.customer.findUnique({ where: { id: req.params.id } })
     const customer = await prisma.customer.update({
       where: { id: req.params.id },
-      data: { points }
+      data: { points: Number(points) }
     })
+    if (oldCustomer && oldCustomer.points !== Number(points)) {
+      await prisma.loyaltyMovement.create({
+        data: {
+          customerId: customer.id,
+          points: Number(points) - oldCustomer.points,
+          type: 'ADMIN_ADJ',
+          reason: 'Ajuste manual de puntos'
+        }
+      })
+    }
     res.json(customer)
   } catch (e) {
     res.status(400).json({ error: 'Error al actualizar puntos del cliente' })
@@ -349,7 +426,6 @@ router.patch('/:id', async (req, res) => {
 
 // ADMIN: Delete customer
 router.delete('/:id', async (req, res) => {
-
   try {
     await prisma.customer.delete({ where: { id: req.params.id } })
     res.status(204).send()

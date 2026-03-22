@@ -113,6 +113,14 @@ router.post('/', async (req, res) => {
               where: { id: customerId },
               data: { points: { increment: pts } }
             })
+            await tx.loyaltyMovement.create({
+              data: {
+                customerId,
+                points: pts,
+                type: 'EARNED',
+                reason: `Venta POS ${createdSale.saleNumber}`
+              }
+            })
           }
         }
       }

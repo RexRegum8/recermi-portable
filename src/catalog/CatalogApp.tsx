@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useCustomer } from '../store/CustomerContext'
 import { useProductStore, Product } from '../store/ProductStore'
 import { getBaseUrl } from '../utils/api'
+import { CustomerProfileModal } from '../components/CustomerProfileModal'
 
 type Page = 'home' | 'product' | 'cart' | 'checkout' | 'orders' | 'login' | 'register'
 
 export function CatalogApp() {
-  const { customer, logoutCustomer, cartCount, config } = useCustomer()
+  const { customer, logoutCustomer, cartCount, config, updateCustomer } = useCustomer()
   const [page, setPage] = useState<Page>('home')
+  const [showProfile, setShowProfile] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
 
@@ -32,7 +34,12 @@ export function CatalogApp() {
             </button>
             {customer ? (
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-500 hidden sm:block">{customer.name}</span>
+                <button onClick={() => setShowProfile(true)} className="flex items-center gap-2 hover:bg-slate-800 p-1 rounded-lg transition-all group">
+                  <div className="w-6 h-6 bg-slate-800 rounded-full flex items-center justify-center text-[10px] overflow-hidden border border-slate-700">
+                    {customer.photo ? <img src={customer.photo} className="w-full h-full object-cover" /> : '👤'}
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-bold group-hover:text-white transition-colors">{customer.name.split(' ')[0]}</span>
+                </button>
                 <button onClick={logoutCustomer} className="text-[10px] text-slate-600 hover:text-red-400 px-2 py-1 rounded-md border border-slate-800 hover:border-red-500/30 transition-all">Salir</button>
               </div>
             ) : (
@@ -51,6 +58,31 @@ export function CatalogApp() {
         {page === 'login' && <LoginPage goRegister={() => setPage('register')} onSuccess={() => setPage('home')} />}
         {page === 'register' && <RegisterPage goLogin={() => setPage('login')} onSuccess={() => setPage('home')} />}
       </main>
+
+      {/* Customer Profile Modal */}
+      {showProfile && customer && (
+        <CustomerProfileModal 
+          customer={customer} 
+          onClose={() => setShowProfile(false)} 
+          onSave={async (updated) => {
+             const token = localStorage.getItem('customerToken')
+             const res = await fetch(`${getBaseUrl()}/api/customers/me`, {
+               method: 'PATCH',
+               headers: { 
+                 'Content-Type': 'application/json',
+                 'Authorization': `Bearer ${token}`
+               },
+               body: JSON.stringify(updated)
+             })
+             if (res.ok) {
+               const data = await res.json()
+               updateCustomer(data)
+             } else {
+               throw new Error('Error al actualizar')
+             }
+          }}
+        />
+      )}
 
       {/* Footer */}
       <footer className="bg-slate-900/50 border-t border-slate-800 mt-12 py-8 text-center">
@@ -256,9 +288,9 @@ function CartPage({ goCheckout, goHome }: { goCheckout: () => void; goHome: () =
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-slate-400">Artículos</span><span className="font-mono">{cart.reduce((a, i) => a + i.quantity, 0)}</span></div>
               <div className="flex justify-between"><span className="text-slate-400">Subtotal</span><span className="font-mono">${cartSubtotal.toFixed(2)}</span></div>
-              {customer?.pendingDiscount && customer.pendingDiscount > 0 ? (
-                <div className="flex justify-between"><span className="text-yellow-400 font-bold text-[10px] uppercase">CUPÓN ({customer.pendingDiscount}%)</span><span className="font-mono text-yellow-400">-${(cartSubtotal * (customer.pendingDiscount / 100)).toFixed(2)}</span></div>
-              ) : null}
+              {(customer?.pendingDiscount ?? 0) > 0 && (
+                <div className="flex justify-between"><span className="text-yellow-400 font-bold text-[10px] uppercase">CUPÓN ({customer!.pendingDiscount}%)</span><span className="font-mono text-yellow-400">-${(cartSubtotal * (customer!.pendingDiscount / 100)).toFixed(2)}</span></div>
+              )}
               <hr className="border-slate-700" />
               <div className="flex justify-between text-lg font-bold"><span>Total</span><span className="font-mono text-green-400">${cartTotal.toFixed(2)}</span></div>
             </div>
@@ -438,7 +470,7 @@ function CheckoutPage({ goOrders, goHome }: { goOrders: () => void; goHome: () =
              <span>Subtotal</span>
              <span className="font-mono">${cartSubtotal.toFixed(2)}</span>
           </div>
-          {customer.pendingDiscount && customer.pendingDiscount > 0 && (
+           {(customer.pendingDiscount ?? 0) > 0 && (
             <div className="flex justify-between text-xs text-yellow-400 font-bold mb-4">
                <span>CUPÓN DE RECOMPENSA ({customer.pendingDiscount}%)</span>
                <span className="font-mono">-${(cartSubtotal * (customer.pendingDiscount / 100)).toFixed(2)}</span>

@@ -9,18 +9,12 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  password  String
-  name      String
-  role      String   // admin, supervisor, empleado
-  avatar    String   @default("👨‍💼")
-  cedula    String?
-  phone     String?
-  cvData    String?  // JSON string for curriculum
-  photo     String?  // Base64 logo/photo
-  
-  // Granular Permissions
+  id         String   @id @default(uuid())
+  username   String   @unique
+  password   String
+  name       String
+  role       String
+  avatar     String   @default("👨‍💼")
   pPOS       Boolean  @default(true)
   pInventory Boolean  @default(false)
   pSales     Boolean  @default(true)
@@ -28,47 +22,77 @@ model User {
   pOrders    Boolean  @default(false)
   pCustomers Boolean  @default(false)
   pSettings  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  cedula     String?
+  cvData     String?
+  phone      String?
+  photo      String?
+  dataFile   String?
+  // New employee fields
+  address    String?
+  birthday   DateTime?
+  gender     String?
+  hiredAt    DateTime?
+  salary     Float?
+  attendances Attendance[]
+  absences    Absence[]
+}
 
-  createdAt DateTime @default(now())
+model Attendance {
+  id        String   @id @default(uuid())
+  userId    String
+  checkIn   DateTime @default(now())
+  checkOut  DateTime?
+  date      String   // ISO YYYY-MM-DD
+  notes     String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Absence {
+  id          String   @id @default(uuid())
+  userId      String
+  date        String
+  reason      String
+  isJustified Boolean  @default(false)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Product {
-  id          String   @id @default(uuid())
-  sku         String   @unique
-  name        String
-  description String?
-  category    String
-  price       Float
-  cost        Float
-  stock       Int      @default(0)
-  minStock    Int      @default(5)
-  warehouse   String   @default("Principal")
-  image       String   @default("📦") // Base64 supported
-  featured    Boolean  @default(false)
-  showInCatalog Boolean  @default(true)
-  updatedAt   DateTime @updatedAt
-  
-  movements   StockMovement[]
-  saleItems   SaleItem[]
-  orderItems    OrderItem[]
+  id             String          @id @default(uuid())
+  sku            String          @unique
+  name           String
+  description    String?
+  category       String
+  price          Float
+  cost           Float
+  stock          Int             @default(0)
+  minStock       Int             @default(5)
+  warehouse      String          @default("Principal")
+  image          String          @default("📦")
+  warrantyDays   Int             @default(30)
+  featured       Boolean         @default(false)
+  showInCatalog  Boolean         @default(true)
+  updatedAt      DateTime        @updatedAt
+  orderItems     OrderItem[]
   quotationItems QuotationItem[]
+  saleItems      SaleItem[]
+  movements      StockMovement[]
 }
 
 model StockMovement {
   id        String   @id @default(uuid())
   productId String
-  product   Product  @relation(fields: [productId], references: [id])
   quantity  Int
-  type      String   // IN, OUT, ADJUSTMENT
+  type      String
   reason    String?
   user      String
   date      DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id])
 }
 
 model Sale {
   id             String       @id @default(uuid())
-  saleNumber     String       @unique // e.g. V-0001
-  items          SaleItem[]
+  saleNumber     String       @unique
   subtotal       Float
   globalDiscount Float        @default(0)
   iva            Float
@@ -78,13 +102,14 @@ model Sale {
   paymentRef     String?
   paymentProof   String?
   cashier        String
-  date           String       // YYYY-MM-DD
-  time           String       // HH:mm:ss
+  date           String
+  time           String
   sessionId      String?
-  session        CashSession? @relation(fields: [sessionId], references: [id])
   customerId     String?
-  customer       Customer?    @relation(fields: [customerId], references: [id])
   createdAt      DateTime     @default(now())
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+  session        CashSession? @relation(fields: [sessionId], references: [id])
+  items          SaleItem[]
 }
 
 model CashSession {
@@ -94,47 +119,49 @@ model CashSession {
   openingBalance Float
   closingBalance Float?
   cashier        String
-  status         String    @default("OPEN") // OPEN, CLOSED
+  status         String    @default("OPEN")
   sales          Sale[]
 }
 
 model SaleItem {
-  id        String  @id @default(uuid())
-  saleId    String
-  sale      Sale    @relation(fields: [saleId], references: [id])
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  qty       Int
-  price     Float
-  discount  Float   @default(0)
-  warrantyDays Int  @default(0)
+  id           String  @id @default(uuid())
+  saleId       String
+  productId    String
+  qty          Int
+  price        Float
+  discount     Float   @default(0)
+  warrantyDays Int     @default(0)
+  product      Product @relation(fields: [productId], references: [id])
+  sale         Sale    @relation(fields: [saleId], references: [id])
 }
 
 model ServiceTicket {
-  id        String   @id @default(uuid())
-  tkNumber  String   @unique // e.g. TK-001
-  customer  String
-  phone     String
-  device    String
-  serial    String?
-  issue     String
-  diagnosis String?
-  status    String   // ENTRY, DIAGNOSIS, BUDGET, REPAIR, QC, DELIVERED
-  cost      Float    @default(0)
-  warranty  Boolean  @default(false)
-  warrantyDays Int   @default(0)
-  parts     String?  // JSON string of parts/costs
-  date      DateTime @default(now())
-  notes     ServiceNote[]
+  id           String        @id @default(uuid())
+  tkNumber     String        @unique
+  customerId   String?       // Relation to Customer
+  customerName String?       // Make optional for migration
+  phone        String
+  device       String
+  serial       String?
+  issue        String
+  diagnosis    String?
+  status       String
+  cost         Float         @default(0)
+  warranty     Boolean       @default(false)
+  warrantyDays Int           @default(0)
+  parts        String?
+  date         DateTime      @default(now())
+  customerRel  Customer?     @relation(fields: [customerId], references: [id])
+  notes        ServiceNote[]
 }
 
 model ServiceNote {
   id        String        @id @default(uuid())
   ticketId  String
-  ticket    ServiceTicket @relation(fields: [ticketId], references: [id])
   content   String
   author    String
   createdAt DateTime      @default(now())
+  ticket    ServiceTicket @relation(fields: [ticketId], references: [id])
 }
 
 model Closure {
@@ -145,102 +172,118 @@ model Closure {
   totalAmountUsd Float
   totalAmountBs  Float
   ivaTotal       Float
-  details        String   // JSON string of byMethod breakdown
+  details        String
   cashier        String
 }
 
 model SystemConfig {
-  id               Int      @id @default(1)
-  storeName        String   @default("Rexermi Tech")
-  storeRIF         String   @default("J-12345678-9")
-  storeAddress     String   @default("Av. Principal, Centro Comercial Plaza, Local 12")
-  storePhone       String   @default("0414-1234567")
-  companyLogo      String?  // Base64
-  exchangeRateBCV  Float    @default(36.50)
-  exchangeRateUSDT Float    @default(37.20)
-  ivaPercent       Float    @default(16)
-  catalogUrl       String   @default("http://localhost:5173/?catalog=true")
-  fidelityEnabled  Boolean  @default(false)
-  ptsPer10Usd      Int      @default(1)
-  pointsStoreEnabled Boolean @default(false)
-  updatedAt        DateTime @updatedAt
+  id                 Int      @id @default(autoincrement())
+  storeName          String   @default("Rexermi Tech")
+  storeRIF           String   @default("J-12345678-9")
+  storeAddress       String   @default("Av. Principal, Centro Comercial Plaza, Local 12")
+  storePhone         String   @default("0414-1234567")
+  companyLogo        String?
+  exchangeRateBCV    Float    @default(36.50)
+  exchangeRateUSDT   Float    @default(37.20)
+  ivaPercent         Float    @default(16)
+  catalogUrl         String   @default("http://localhost:5173/?catalog=true")
+  fidelityEnabled    Boolean  @default(false)
+  ptsPer10Usd        Int      @default(1)
+  pointsStoreEnabled Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
 }
 
 model Customer {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  phone     String?
-  address   String?
-  ci        String?
-  photo     String?  // Base64
-  points    Int      @default(0)
-  pendingDiscount Float @default(0) // Coupon applied but not yet used
-  orders    Order[]
-  sales     Sale[]
-  createdAt DateTime @default(now())
+  id              String   @id @default(uuid())
+  email           String   @unique
+  password        String
+  name            String
+  phone           String?
+  address         String?
+  ci               String?
+  photo            String?
+  birthday         DateTime?
+  gender           String?
+  isCompany        Boolean  @default(false)
+  isSpecialTaxpayer Boolean  @default(false)
+  points           Int      @default(0)
+  pendingDiscount  Float    @default(0)
+  createdAt        DateTime @default(now())
+  orders          Order[]
+  sales           Sale[]
+  tickets         ServiceTicket[]
+  loyaltyMovements LoyaltyMovement[]
 }
 
 model Order {
-  id             String      @id @default(uuid())
-  customerId     String
-  customer       Customer    @relation(fields: [customerId], references: [id])
-  items          OrderItem[]
-  total          Float
-  status         String      @default("PENDING") // PENDING, COMPLETED, CANCELLED
-  paymentMethod  String?
-  paymentRef     String?
-  paymentProof   String?     // base64 image capture
-  createdAt      DateTime    @default(now())
+  id            String      @id @default(uuid())
+  customerId    String
+  total         Float
+  status        String      @default("PENDING")
+  createdAt     DateTime    @default(now())
+  paymentMethod String?
+  paymentProof  String?
+  paymentRef    String?
+  customer      Customer    @relation(fields: [customerId], references: [id])
+  items         OrderItem[]
 }
 
 model OrderItem {
   id        String  @id @default(uuid())
   orderId   String
-  order     Order   @relation(fields: [orderId], references: [id])
   productId String
-  product   Product @relation(fields: [productId], references: [id])
   qty       Int
   price     Float
+  product   Product @relation(fields: [productId], references: [id])
+  order     Order   @relation(fields: [orderId], references: [id])
+}
+
+model LoyaltyMovement {
+  id          String   @id @default(uuid())
+  customerId  String
+  points      Int
+  type        String   // 'EARNED', 'REDEEMED', 'ADMIN_ADJ'
+  reason      String
+  createdAt   DateTime @default(now())
+  customer    Customer @relation(fields: [customerId], references: [id])
 }
 
 model Quotation {
   id             String          @id @default(uuid())
-  number         String          @unique // e.g. Q-0001
+  number         String          @unique
   customerName   String
   customerEmail  String?
   customerPhone  String?
-  items          QuotationItem[]
   subtotal       Float
   globalDiscount Float           @default(0)
   iva            Float
   total          Float
   notes          String?
   validUntil     DateTime?
-  status         String          @default("PENDING") // PENDING, EXPIRED, CONVERTED
+  status         String          @default("PENDING")
   createdAt      DateTime        @default(now())
+  items          QuotationItem[]
 }
 
 model QuotationItem {
   id          String    @id @default(uuid())
   quotationId String
-  quotation   Quotation @relation(fields: [quotationId], references: [id])
   productId   String
-  product     Product   @relation(fields: [productId], references: [id])
   qty         Int
   price       Float
   discount    Float     @default(0)
+  product     Product   @relation(fields: [productId], references: [id])
+  quotation   Quotation @relation(fields: [quotationId], references: [id])
 }
 
 model LoyaltyReward {
-  id          String   @id @default(uuid())
-  name        String
-  pointsCost  Int
-  description String?
-  type        String   // COUPON, DISCOUNT, PRODUCT
-  value       Float?   // e.g. 10.0 for $10 discount
-  isActive    Boolean  @default(true)
-  showInCatalog Boolean @default(true)
-  createdAt   DateTime @default(now())
+  id            String   @id @default(uuid())
+  name          String
+  pointsCost    Int
+  description   String?
+  type          String
+  value         Float?
+  isActive      Boolean  @default(true)
+  showInCatalog Boolean  @default(true)
+  createdAt     DateTime @default(now())
 }

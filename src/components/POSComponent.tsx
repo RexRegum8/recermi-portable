@@ -128,7 +128,7 @@ export function POSComponent() {
         }
         return prev.map((i) => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i)
       }
-      return [...prev, { ...product, quantity: 1, discount: 0, warrantyDays: 30, stock: product.stock } as CartItem]
+      return [...prev, { ...product, quantity: 1, discount: 0, warrantyDays: product.warrantyDays || 30, stock: product.stock } as CartItem]
     })
     setQuery('')
   }
@@ -368,11 +368,25 @@ export function POSComponent() {
                  <div className="flex justify-between"><span>Bs BCV:</span><span>{totalBs.toFixed(2)}</span></div>
                  <div className="flex justify-between"><span>USDT:</span><span>{totalUSDT.toFixed(2)}</span></div>
                </div>
-               <div className="mt-3 pt-3 border-t border-white/20 grid grid-cols-2 gap-2 text-[10px]">
-                 <div>Subtotal: ${subtotal.toFixed(2)}</div>
-                 <div>IVA: ${iva.toFixed(2)}</div>
-               </div>
-             </div>
+                <div className="mt-3 pt-3 border-t border-white/20 space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    <div>Subtotal: ${subtotal.toFixed(2)}</div>
+                    <div>IVA: ${iva.toFixed(2)}</div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white/10 rounded-lg p-1.5 border border-white/20">
+                     <span className="text-[9px] font-black uppercase opacity-60">Desc. Manual:</span>
+                     <input type="number" value={globalDiscount || ''} onChange={e => setGlobalDiscount(Number(e.target.value))} placeholder="0"
+                       className="w-12 bg-white/20 border border-white/30 rounded px-1.5 py-0.5 text-xs font-bold outline-none text-white text-center" />
+                     <span className="text-xs font-bold font-mono">%</span>
+                  </div>
+                  {globalDiscount > 0 && (
+                    <div className="flex justify-between items-center text-[10px] bg-yellow-400 text-slate-900 px-2 py-1 rounded font-black uppercase">
+                       <span>Descuento aplicado:</span>
+                       <span>-${discountAmt.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
           </div>
 
           {/* Customer Selection */}

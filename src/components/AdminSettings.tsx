@@ -3,17 +3,19 @@ import { useProductStore } from '../store/ProductStore'
 import { useState } from 'react'
 import { getBaseUrl } from '../utils/api'
 
+import { UserProfileModal } from './UserProfileModal'
+
 export function AdminSettings() {
   const { config, updateConfig, users, registerUser, deleteUser, updateUser } = useAuth()
   const { products, updateProduct } = useProductStore()
   const [saved, setSaved] = useState(false)
   const [showAddUser, setShowAddUser] = useState(false)
-  const [editingUser, setEditingUser] = useState<any | null>(null)
+  const [selectedUserForProfile, setSelectedUserForProfile] = useState<any | null>(null)
   const [activeAdminTab, setActiveAdminTab] = useState<'system'|'catalog'|'fidelity'|'users'>('system')
   
   const [newUser, setNewUser] = useState({ 
     name: '', username: '', password: '', role: 'empleado' as UserRole, avatar: '👤',
-    cedula: '', phone: '', cvData: '', photo: '',
+    cedula: '', phone: '', cvData: '', photo: '', dataFile: '',
     pPOS: true, pInventory: false, pSales: true, pService: false, pOrders: false, pCustomers: false, pSettings: false 
   })
 
@@ -23,7 +25,8 @@ export function AdminSettings() {
       const data = await resp.json()
       if (data.price) {
         updateConfig({ exchangeRateBCV: data.price })
-        alert(`Tasa BCV actualizada: ${data.price} Bs`)
+        const dateStr = data.date ? ` (Fecha: ${data.date})` : ''
+        alert(`Tasa BCV obtenida: ${data.price} Bs${dateStr}. Verifica con el portal oficial si es fin de semana.`)
       }
     } catch (e) { alert('Error al obtener la tasa') }
   }
@@ -45,16 +48,15 @@ export function AdminSettings() {
     setShowAddUser(false)
     setNewUser({ 
       name: '', username: '', password: '', role: 'empleado', avatar: '👤',
-      cedula: '', phone: '', cvData: '', photo: '',
+      cedula: '', phone: '', cvData: '', photo: '', dataFile: '',
       pPOS: true, pInventory: false, pSales: true, pService: false, pOrders: false, pCustomers: false, pSettings: false
     })
   }
 
-  const handleUpdateUserDetails = async () => {
-    if (!editingUser) return
-    const { id, ...data } = editingUser
+  const handleUpdateUserDetails = async (updatedData: any) => {
+    const { id, ...data } = updatedData
     await updateUser(id, data)
-    setEditingUser(null)
+    setSelectedUserForProfile(null)
   }
 
   const roleLabel = (role: string) => {
@@ -245,7 +247,7 @@ export function AdminSettings() {
                         </div>
                         <div className="flex items-center gap-3">
                           <span className={`px-2 py-0.5 rounded-full text-[8px] font-black border ${cfg.color}`}>{cfg.label}</span>
-                          <button onClick={() => setEditingUser(u)} className="opacity-0 group-hover:opacity-100 p-2 text-slate-500 hover:text-white transition-all text-xs">✏️</button>
+                          <button onClick={() => setSelectedUserForProfile(u)} className="opacity-0 group-hover:opacity-100 p-2 text-slate-500 hover:text-white transition-all text-xs">✏️</button>
                         </div>
                      </div>
                    )
@@ -304,41 +306,12 @@ export function AdminSettings() {
         </div>
       )}
 
-      {editingUser && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[100] p-6">
-          <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] w-full max-w-sm shadow-2xl animate-in zoom-in-95">
-             <div className="text-center mb-8">
-               <span className="text-5xl block mb-2">{editingUser.avatar}</span>
-               <h3 className="text-xl font-black">Editar Perfil</h3>
-               <p className="text-xs text-slate-500">@{editingUser.username}</p>
-             </div>
-             <div className="space-y-4 max-h-[60vh] overflow-auto px-2 pb-2">
-               <input value={editingUser.name} onChange={e => setEditingUser({...editingUser, name: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm font-bold" />
-               <input type="password" placeholder="Nueva Password (opcional)" value={editingUser.password || ''} onChange={e => setEditingUser({...editingUser, password: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-xs text-center" />
-               
-               <div className="p-4 bg-slate-950/50 rounded-2xl border border-slate-800 space-y-3">
-                 <h4 className="text-[10px] uppercase font-black text-slate-500 tracking-widest pl-1">Datos Personales / RRHH</h4>
-                 <div className="grid grid-cols-2 gap-3">
-                   <input placeholder="Cédula" value={editingUser.cedula || ''} onChange={e => setEditingUser({...editingUser, cedula: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono" />
-                   <input placeholder="Teléfono" value={editingUser.phone || ''} onChange={e => setEditingUser({...editingUser, phone: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono" />
-                 </div>
-                 <textarea placeholder="Currículum / Experiencia / Certificados..." value={editingUser.cvData || ''} onChange={e => setEditingUser({...editingUser, cvData: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-3 text-xs min-h-[100px] whitespace-pre-wrap" />
-               </div>
-
-               {editingUser.username !== 'admin' && (
-                 <select value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value as any})} className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm">
-                   <option value="empleado">Empleado</option>
-                   <option value="supervisor">Supervisor</option>
-                   <option value="admin">Administrador</option>
-                 </select>
-               )}
-             </div>
-             <div className="flex gap-4 mt-8">
-               <button onClick={() => setEditingUser(null)} className="flex-1 py-4 text-xs font-bold bg-slate-800 rounded-2xl">Cerrar</button>
-               <button onClick={handleUpdateUserDetails} className="flex-1 py-4 text-xs font-black bg-blue-600 rounded-2xl">GUARDAR</button>
-             </div>
-          </div>
-        </div>
+      {selectedUserForProfile && (
+        <UserProfileModal 
+          user={selectedUserForProfile} 
+          onClose={() => setSelectedUserForProfile(null)}
+          onSave={handleUpdateUserDetails}
+        />
       )}
     </div>
   )

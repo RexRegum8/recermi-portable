@@ -37,7 +37,12 @@ router.post('/login', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const users = await prisma.user.findMany({
-      select: { id: true, name: true, username: true, role: true, avatar: true, cedula: true, phone: true, cvData: true, photo: true }
+      select: { 
+        id: true, name: true, username: true, role: true, avatar: true, 
+        cedula: true, phone: true, cvData: true, photo: true, dataFile: true,
+        address: true, birthday: true, gender: true, hiredAt: true, salary: true,
+        _count: { select: { attendances: true, absences: true } }
+      }
     })
     res.json(users)
   } catch (e) {
@@ -46,13 +51,13 @@ router.get('/', async (req, res) => {
 })
 
 router.post('/register', async (req, res) => {
-  const { name, username, password, role, avatar, cedula, phone, cvData, photo, pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings } = req.body
+  const { name, username, password, role, avatar, cedula, phone, cvData, photo, dataFile, pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings } = req.body
   try {
     const hashedPassword = await bcrypt.hash(password, 10)
     const user = await prisma.user.create({
       data: { 
         name, username, password: hashedPassword, role, avatar, 
-        cedula, phone, cvData, photo,
+        cedula, phone, cvData, photo, dataFile,
         pPOS: !!pPOS, pInventory: !!pInventory, pSales: !!pSales, 
         pService: !!pService, pOrders: !!pOrders, pCustomers: !!pCustomers, 
         pSettings: !!pSettings 
@@ -66,12 +71,21 @@ router.post('/register', async (req, res) => {
 })
 
 router.patch('/:id', async (req, res) => {
-  const { name, username, password, role, avatar, cedula, phone, cvData, photo, pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings } = req.body
+  const { 
+    name, username, password, role, avatar, cedula, phone, cvData, photo, dataFile, 
+    pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings,
+    address, birthday, gender, hiredAt, salary 
+  } = req.body
   try {
     const data = { 
       name, username, role, avatar, 
-      cedula, phone, cvData, photo,
-      pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings 
+      cedula, phone, cvData, photo, dataFile,
+      pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings,
+      address, 
+      birthday: birthday ? new Date(birthday) : undefined, 
+      gender, 
+      hiredAt: hiredAt ? new Date(hiredAt) : undefined, 
+      salary: salary !== undefined ? Number(salary) : undefined
     }
     if (password) {
       data.password = await bcrypt.hash(password, 10)
@@ -84,6 +98,63 @@ router.patch('/:id', async (req, res) => {
     res.json(userData)
   } catch (e) {
     res.status(400).json({ error: 'Error al actualizar usuario' })
+  }
+})
+
+// GET full employee detail
+router.get('/:id', async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      include: {
+        attendances: { orderBy: { checkIn: 'desc' }, take: 50 },
+        absences: { orderBy: { date: 'desc' }, take: 50 }
+      }
+    })
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' })
+    const { password: _, ...userData } = user
+    res.json(userData)
+  } catch (e) {
+    res.status(500).json({ error: 'Error al obtener detalles del empleado' })
+  }
+})
+
+// Attendance & Absences
+router.post('/:id/attendance', async (req, res) => {
+  const { type, notes } = req.body // 'IN' or 'OUT'
+  const date = new Date().toISOString().split('T')[0]
+  try {
+    if (type === 'IN') {
+      const att = await prisma.attendance.create({
+        data: { userId: req.params.id, date, notes }
+      })
+      return res.json(att)
+    } else {
+      const last = await prisma.attendance.findFirst({
+        where: { userId: req.params.id, date, checkOut: null },
+        orderBy: { checkIn: 'desc' }
+      })
+      if (!last) return res.status(400).json({ error: 'No hay entrada abierta hoy' })
+      const updated = await prisma.attendance.update({
+        where: { id: last.id },
+        data: { checkOut: new Date(), notes: notes || last.notes }
+      })
+      res.json(updated)
+    }
+  } catch (e) {
+    res.status(400).json({ error: 'Error al registrar asistencia' })
+  }
+})
+
+router.post('/:id/absences', async (req, res) => {
+  const { date, reason, isJustified } = req.body
+  try {
+    const abs = await prisma.absence.create({
+      data: { userId: req.params.id, date, reason, isJustified: !!isJustified }
+    })
+    res.status(201).json(abs)
+  } catch (e) {
+    res.status(400).json({ error: 'Error al registrar falta' })
   }
 })
 

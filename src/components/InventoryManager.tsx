@@ -31,6 +31,7 @@ export function InventoryManager() {
   
   // Reward Form
   const [rn, setRn] = useState(''); const [rd, setRd] = useState(''); const [rc, setRc] = useState('100')
+  const [rt, setRt] = useState<'COUPON' | 'DISCOUNT' | 'PRODUCT'>('COUPON'); const [rv, setRv] = useState('5')
 
   useEffect(() => {
     if (activeView === 'movements') {
@@ -73,8 +74,8 @@ export function InventoryManager() {
 
   const handleCreateReward = async () => {
     if (!rn || !rc) return
-    await createReward({ name: rn, description: rd, pointsCost: Number(rc), isActive: true })
-    setRn(''); setRd(''); setRc('100'); setShowNewReward(false)
+    await createReward({ name: rn, description: rd, pointsCost: Number(rc), isActive: true, type: rt, value: Number(rv) })
+    setRn(''); setRd(''); setRc('100'); setRv('5'); setShowNewReward(false)
   }
 
   const handleCreateMovement = async () => {
@@ -238,10 +239,14 @@ export function InventoryManager() {
                    </div>
                    <h3 className="font-black text-white text-sm mb-1">{r.name}</h3>
                    <p className="text-[10px] text-slate-500 mb-4 h-8 line-clamp-2 leading-tight">{r.description}</p>
-                   <div className="flex justify-between items-end border-t border-slate-800 pt-4">
-                      <div><p className="text-[9px] text-blue-500 font-black uppercase">Puntos</p><p className="text-xl font-black text-white font-mono">{r.pointsCost}</p></div>
-                      <button onClick={() => deleteReward(r.id)} className="p-2 text-red-500/30 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">🗑️</button>
-                   </div>
+                    <div className="flex justify-between items-end border-t border-slate-800 pt-4">
+                       <div><p className="text-[9px] text-blue-500 font-black uppercase">Puntos</p><p className="text-xl font-black text-white font-mono">{r.pointsCost}</p></div>
+                       <div className="text-right">
+                          <p className="text-[9px] text-yellow-500 font-black uppercase">{r.type}</p>
+                          <p className="text-sm font-black text-white">{r.value > 0 ? `${r.value}%` : '🎁'}</p>
+                       </div>
+                       <button onClick={() => deleteReward(r.id)} className="p-2 text-red-500/30 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">🗑️</button>
+                    </div>
                 </div>
               ))}
            </div>
@@ -273,6 +278,10 @@ export function InventoryManager() {
                    <input type="number" value={np} onChange={e => setNp(e.target.value)} placeholder="Precio" className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm font-mono" />
                    <input type="number" value={nco} onChange={e => setNco(e.target.value)} placeholder="Costo" className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm font-mono" />
                    <input type="number" value={nst} onChange={e => setNst(e.target.value)} placeholder="Stock" className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm font-mono" />
+                </div>
+                <div>
+                   <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block">Días de Garantía</label>
+                   <input type="number" value={ngx} onChange={e => setNgx(e.target.value)} placeholder="30" className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-mono" />
                 </div>
              </div>
              <div className="flex gap-4 mt-8">
@@ -338,11 +347,25 @@ export function InventoryManager() {
              <div className="space-y-4">
                 <input value={rn} onChange={e => setRn(e.target.value)} placeholder="Nombre del Canje" className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 text-sm font-bold" />
                 <textarea value={rd} onChange={e => setRd(e.target.value)} placeholder="Descripción detallada..." className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 text-xs h-24 resize-none" />
-                <div className="bg-blue-600/10 p-4 rounded-2xl border border-blue-500/20">
-                   <label className="text-[10px] font-black uppercase text-blue-500 mb-2 block">Costo en Puntos</label>
-                   <input type="number" value={rc} onChange={e => setRc(e.target.value)} className="w-full bg-transparent text-2xl font-black font-mono outline-none" />
-                </div>
-             </div>
+                 <div className="bg-blue-600/10 p-4 rounded-2xl border border-blue-500/20">
+                    <label className="text-[10px] font-black uppercase text-blue-500 mb-2 block">Costo en Puntos</label>
+                    <input type="number" value={rc} onChange={e => setRc(e.target.value)} className="w-full bg-transparent text-lg font-black font-mono outline-none" />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl">
+                       <label className="text-[10px] font-black uppercase text-slate-500 mb-1 block">Tipo</label>
+                       <select value={rt} onChange={e => setRt(e.target.value as any)} className="w-full bg-transparent text-xs font-bold outline-none">
+                          <option value="COUPON">Cupón %</option>
+                          <option value="DISCOUNT">Descuento %</option>
+                          <option value="PRODUCT">Producto</option>
+                       </select>
+                    </div>
+                    <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl">
+                       <label className="text-[10px] font-black uppercase text-slate-500 mb-1 block">Valor (% o $)</label>
+                       <input type="number" value={rv} onChange={e => setRv(e.target.value)} className="w-full bg-transparent text-sm font-black font-mono outline-none" />
+                    </div>
+                 </div>
+              </div>
              <div className="flex gap-4 mt-8">
                 <button onClick={() => setShowNewReward(false)} className="flex-1 py-4 rounded-3xl bg-slate-800 font-bold">CANCELAR</button>
                 <button onClick={handleCreateReward} className="flex-1 py-4 rounded-3xl bg-blue-600 font-black shadow-xl shadow-blue-900/40 text-xs">CREAR RECOMPENSA</button>
