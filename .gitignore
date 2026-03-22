@@ -1,0 +1,15 @@
+# Exluir carpetas de compilación redundantes
+resources/app/release/
+resources/app/Rexermi_Ready/
+
+# Excluir logs pesados
+*.log
+resources/app/build_log.txt
+
+# Excluir redundancias en node_modules (si ya existe el binario en la raíz)
+# Pero mantenemos el resto para que sea "portable"
+# Omitimos electron dist interno que pesa >200MB y ya está en la raíz
+resources/app/node_modules/electron/dist/
+
+# Ignorar base de datos local para no sobrescribir la del cliente (Opcional)
+# backend/dev.db
