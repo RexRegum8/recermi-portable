@@ -1,0 +1,16 @@
+INSTRUCCIONES DE USO - REXERMI OS PRO (VERSIÓN PORTABLE)
+=========================================================
+
+Esta es la versión "Todo en Uno" de Rexermi OS. No necesitas instalar nada más en tu computadora.
+
+COMO EMPEZAR:
+1. Haz doble clic en el archivo "Rexermi-OS-Portable.exe".
+2. La PRIMERA VEZ, el programa tardará unos segundos extra en configurar la base de datos (esto solo ocurre una vez).
+3. ¡El programa se abrirá automáticamente!
+
+NOTAS:
+- No se requiere tener Node.js ni ningún otro programa instalado.
+- Si quieres mover el programa, solo necesitas llevarte el archivo "Rexermi-OS-Portable.exe".
+- Tus datos se guardarán automáticamente en tu carpeta de usuario local (%AppData%/rexermi-os).
+
+¡Listo para usar!

@@ -1,0 +1,186 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  name      String
+  role      String   // admin, supervisor, empleado
+  avatar    String   @default("👨‍💼")
+  
+  // Granular Permissions
+  pPOS       Boolean  @default(true)
+  pInventory Boolean  @default(false)
+  pSales     Boolean  @default(true)
+  pService   Boolean  @default(false)
+  pOrders    Boolean  @default(false)
+  pCustomers Boolean  @default(false)
+  pSettings  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  sku         String   @unique
+  name        String
+  description String?
+  category    String
+  price       Float
+  cost        Float
+  stock       Int      @default(0)
+  minStock    Int      @default(5)
+  warehouse   String   @default("Principal")
+  image       String   @default("📦")
+  featured    Boolean  @default(false)
+  showInCatalog Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+  
+  movements   StockMovement[]
+  saleItems   SaleItem[]
+}
+
+model StockMovement {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  type      String   // IN, OUT, ADJUSTMENT
+  reason    String?
+  user      String
+  date      DateTime @default(now())
+}
+
+model Sale {
+  id             String       @id @default(uuid())
+  saleNumber     String       @unique // e.g. V-0001
+  items          SaleItem[]
+  subtotal       Float
+  globalDiscount Float        @default(0)
+  iva            Float
+  total          Float
+  totalBs        Float
+  paymentMethod  String
+  paymentRef     String?
+  paymentProof   String?
+  cashier        String
+  date           String       // YYYY-MM-DD
+  time           String       // HH:mm:ss
+  sessionId      String?
+  session        CashSession? @relation(fields: [sessionId], references: [id])
+  createdAt      DateTime     @default(now())
+}
+
+model CashSession {
+  id             String    @id @default(uuid())
+  openedAt       DateTime  @default(now())
+  closedAt       DateTime?
+  openingBalance Float
+  closingBalance Float?
+  cashier        String
+  status         String    @default("OPEN") // OPEN, CLOSED
+  sales          Sale[]
+}
+
+model SaleItem {
+  id        String  @id @default(uuid())
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  qty       Int
+  price     Float
+  discount  Float   @default(0)
+}
+
+model ServiceTicket {
+  id        String   @id @default(uuid())
+  tkNumber  String   @unique // e.g. TK-001
+  customer  String
+  phone     String
+  device    String
+  serial    String?
+  issue     String
+  diagnosis String?
+  status    String   // ENTRY, DIAGNOSIS, BUDGET, REPAIR, QC, DELIVERED
+  cost      Float    @default(0)
+  warranty  Boolean  @default(false)
+  parts     String?
+  date      DateTime @default(now())
+  notes     ServiceNote[]
+}
+
+model ServiceNote {
+  id        String        @id @default(uuid())
+  ticketId  String
+  ticket    ServiceTicket @relation(fields: [ticketId], references: [id])
+  content   String
+  author    String
+  createdAt DateTime      @default(now())
+}
+
+model Closure {
+  id             String   @id @default(uuid())
+  date           DateTime @default(now())
+  totalSales     Int
+  totalItems     Int
+  totalAmountUsd Float
+  totalAmountBs  Float
+  ivaTotal       Float
+  details        String   // JSON string of byMethod breakdown
+  cashier        String
+}
+
+model SystemConfig {
+  id               Int      @id @default(1)
+  storeName        String   @default("Rexermi Tech")
+  storeRIF         String   @default("J-12345678-9")
+  storeAddress     String   @default("Av. Principal, Centro Comercial Plaza, Local 12")
+  storePhone       String   @default("0414-1234567")
+  exchangeRateBCV  Float    @default(36.50)
+  exchangeRateUSDT Float    @default(37.20)
+  ivaPercent       Float    @default(16)
+  catalogUrl       String   @default("http://localhost:5173/?catalog=true")
+  updatedAt        DateTime @updatedAt
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  orders    Order[]
+}
+
+model Order {
+  id             String      @id @default(uuid())
+  customerId     String
+  customer       Customer    @relation(fields: [customerId], references: [id])
+  items          OrderItem[]
+  total          Float
+  status         String      @default("PENDING") // PENDING, COMPLETED, CANCELLED
+  paymentMethod  String?
+  paymentRef     String?
+  paymentProof   String?     // base64 image capture
+  createdAt      DateTime    @default(now())
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId String
+  qty       Int
+  price     Float
+}
