@@ -13,6 +13,7 @@ export function AdminSettings() {
   const [selectedUserForProfile, setSelectedUserForProfile] = useState<any | null>(null)
   const [activeAdminTab, setActiveAdminTab] = useState<'system'|'catalog'|'fidelity'|'users'>('system')
   const [formConfig, setFormConfig] = useState<any>(config)
+  const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null)
 
   useEffect(() => {
     setFormConfig(config)
@@ -118,7 +119,14 @@ export function AdminSettings() {
 
   const handleAddUser = async () => {
     if (!newUser.name || !newUser.username || !newUser.password) return
-    await registerUser(newUser)
+    const formData = new FormData()
+    Object.entries(newUser).forEach(([key, val]) => {
+      if (val !== undefined && key !== 'photo') formData.append(key, val.toString())
+    })
+    
+    // If we have a file in the new user (need to handle it in the modal/form)
+    // For now assuming we just register with basic data and then edit profile
+    await registerUser(formData)
     setShowAddUser(false)
     setNewUser({ 
       name: '', username: '', password: '', role: 'empleado', avatar: '👤',
@@ -199,12 +207,22 @@ export function AdminSettings() {
                 <div className="space-y-4">
                   <div className="flex gap-4 items-end">
                     <div className="flex-1">
-                      <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1.5 block">Logo URL (PNG/SVG/Base64)</label>
-                      <input value={formConfig.companyLogo || ''} onChange={(e) => setFormConfig({ ...formConfig, companyLogo: e.target.value })}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono outline-none" placeholder="https://..." />
+                      <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1.5 block">Logo de la Empresa</label>
+                      <input type="file" accept="image/*" onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          setSelectedLogoFile(file)
+                          const reader = new FileReader()
+                          reader.onloadend = () => setFormConfig({ ...formConfig, companyLogo: reader.result as string })
+                          reader.readAsDataURL(file)
+                        }
+                      }}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono outline-none" />
                     </div>
                     <div className="w-16 h-16 bg-slate-800 border border-slate-700 rounded-xl flex items-center justify-center overflow-hidden">
-                      {formConfig.companyLogo ? <img src={formConfig.companyLogo} className="max-w-full max-h-full" /> : <span className="text-xl">🖼️</span>}
+                      {formConfig.companyLogo?.startsWith('data:image') ? <img src={formConfig.companyLogo} className="max-w-full max-h-full" /> : 
+                       formConfig.companyLogo?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${formConfig.companyLogo}`} className="max-w-full max-h-full" /> :
+                       <span className="text-xl">🖼️</span>}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -360,7 +378,11 @@ export function AdminSettings() {
                {products.map(p => (
                  <div key={p.id} className="bg-slate-800/40 p-3 rounded-2xl border border-slate-800 flex items-center justify-between group hover:border-blue-500/30 transition-all">
                     <div className="flex items-center gap-4">
-                       <span className="text-2xl opacity-60 group-hover:opacity-100 transition-opacity">{p.image?.startsWith('data:image') ? <img src={p.image} className="w-8 h-8 rounded-lg object-cover inline-block mr-2" /> : p.image}</span>
+                       <span className="text-2xl opacity-60 group-hover:opacity-100 transition-opacity">
+                         {p.image?.startsWith('data:image') ? <img src={p.image} className="w-8 h-8 rounded-lg object-cover inline-block mr-2" /> : 
+                          p.image?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${p.image}`} className="w-8 h-8 rounded-lg object-cover inline-block mr-2" /> :
+                          p.image}
+                       </span>
                        <div>
                          <p className="font-bold text-sm tracking-tight">{p.name}</p>
                          <p className="text-[10px] text-slate-500 font-mono italic">{p.sku} | {p.category}</p>
@@ -457,9 +479,22 @@ export function AdminSettings() {
         )}
       </div>
 
-      <div className="fixed bottom-6 right-6">
+  <div className="fixed bottom-6 right-6">
         <button onClick={async () => { 
-            await updateConfig(formConfig);
+            const formData = new FormData()
+            Object.entries(formConfig).forEach(([key, val]) => {
+              if (val !== undefined && key !== 'companyLogo') {
+                 formData.append(key, typeof val === 'object' ? JSON.stringify(val) : val.toString())
+              }
+            })
+            if (selectedLogoFile) {
+              formData.append('logoFile', selectedLogoFile)
+            } else if (formConfig.companyLogo) {
+              formData.append('companyLogo', formConfig.companyLogo)
+            }
+
+            await updateConfig(formData);
+            setSelectedLogoFile(null)
             if (formConfig.tunnelMode !== config.tunnelMode || formConfig.tunnelToken !== config.tunnelToken) {
               (window as any).electronAPI?.updateTunnelConfig({ mode: formConfig.tunnelMode, token: formConfig.tunnelToken });
             }

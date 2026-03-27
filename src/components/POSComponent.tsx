@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useAuth } from '../auth/AuthContext'
 import { useSales, SaleRecord } from '../store/SalesContext'
@@ -22,7 +22,7 @@ const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: string }[] = [
 export function POSComponent() {
   const { user, config, isAdmin, updateConfig } = useAuth()
   const { addSale, dailySales, activeSession, refreshSales } = useSales()
-  const { products, refreshProducts } = useProductStore()
+  const { products, refreshProducts, pendingPosItem, setPendingPosItem } = useProductStore()
   
   const [cart, setCart] = useState<CartItem[]>([])
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('efectivo_usd')
@@ -32,7 +32,7 @@ export function POSComponent() {
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos')
   const [mixedBreakdown, setMixedBreakdown] = useState<{ usd: number; bs: number; methodBs: string }>({ usd: 0, bs: 0, methodBs: 'pago_movil' })
   const [showProductDetail, setShowProductDetail] = useState<any | null>(null)
-  const [paymentProof, setPaymentProof] = useState<string | null>(null)
+  const [paymentProof, setPaymentProof] = useState<any>(null)
   const proofInputRef = useRef<HTMLInputElement>(null)
 
   // Customer Linking
@@ -41,7 +41,7 @@ export function POSComponent() {
   const [customers, setCustomers] = useState<any[]>([])
   const [filteredCust, setFilteredCust] = useState<any[]>([])
 
-  const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category || 'Otros')))]
+  const categories = useMemo(() => ['Todos', ...Array.from(new Set(products.map(p => p.category || 'Otros')))], [products])
 
   // Quick Edit Rates
   const [isEditingBCV, setIsEditingBCV] = useState(false)
@@ -123,7 +123,7 @@ export function POSComponent() {
     setIsEditingUSDT(false)
   }
 
-  const addToCart = (itemOrSku: any) => {
+  const addToCart = useCallback((itemOrSku: any) => {
     console.log(`[FRONTEND-POS] Attempting to add item to cart: ${typeof itemOrSku === 'string' ? itemOrSku : itemOrSku.name}`)
     const product = typeof itemOrSku === 'string' 
       ? products.find(p => p.sku?.toLowerCase() === itemOrSku.toLowerCase() || p.name?.toLowerCase().includes(itemOrSku.toLowerCase())) 
@@ -158,17 +158,29 @@ export function POSComponent() {
       return [...prev, { ...product, quantity: 1, discount: 0, warrantyDays: product.warrantyDays || 30, stock: product.stock } as CartItem]
     })
     setSearchQuery('')
-  }
+  }, [products])
+
+  // Process pending items from other modules (e.g., Print Module)
+  useEffect(() => {
+    if (pendingPosItem) {
+      console.log('[FRONTEND-POS] Found pending item:', pendingPosItem.name)
+      const exists = cart.find(i => i.id === pendingPosItem.id)
+      if (!exists) {
+        setCart(prev => [...prev, pendingPosItem])
+        setPendingPosItem(null)
+      } else {
+        setPendingPosItem(null)
+      }
+    }
+  }, [pendingPosItem, cart, setPendingPosItem])
   
   const handleProofChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (event) => setPaymentProof(event.target?.result as string)
-    reader.readAsDataURL(file)
+    setPaymentProof(file)
   }
 
-  const updateCartItem = (id: string, updates: Partial<CartItem>) => {
+  const updateCartItem = useCallback((id: string, updates: Partial<CartItem>) => {
     setCart((prev) => prev.map((i) => {
       if (i.id === id) {
         const prod = products.find(p => p.id === id)
@@ -180,19 +192,16 @@ export function POSComponent() {
       }
       return i
     }).filter((i) => i.quantity > 0))
-  }
+  }, [products])
 
-  const subtotal = cart.reduce((a, i) => a + i.price * i.quantity * (1 - i.discount / 100), 0)
-  const discountAmt = subtotal * (globalDiscount / 100)
-  const afterDiscount = subtotal - discountAmt
-  const iva = afterDiscount * (ivaPercent / 100)
-  const total = afterDiscount + iva
+  const subtotal = useMemo(() => cart.reduce((a, i) => a + i.price * i.quantity * (1 - i.discount / 100), 0), [cart])
+  const discountAmt = useMemo(() => subtotal * (globalDiscount / 100), [subtotal, globalDiscount])
+  const afterDiscount = useMemo(() => subtotal - discountAmt, [subtotal, discountAmt])
+  const iva = useMemo(() => afterDiscount * (ivaPercent / 100), [afterDiscount, ivaPercent])
+  const total = useMemo(() => afterDiscount + iva, [afterDiscount, iva])
   
-  // Correction: USDT Reference
-  // Usually, if Total = 100 USD, Total Bs = 3600 (BCV 36).
-  // If USDT = 38.5, then Total USDT = 3600 / 38.5 = 93.50 USDT.
-  const totalBs = total * exchangeRateBCV
-  const totalUSDT = totalBs / (exchangeRateUSDT || exchangeRateBCV)
+  const totalBs = useMemo(() => total * exchangeRateBCV, [total, exchangeRateBCV])
+  const totalUSDT = useMemo(() => totalBs / (exchangeRateUSDT || exchangeRateBCV), [totalBs, exchangeRateUSDT, exchangeRateBCV])
 
   const processSale = async () => {
     if (cart.length === 0) return
@@ -205,25 +214,33 @@ export function POSComponent() {
       finalMethod = `Mixto ($${mixedBreakdown.usd} + ${mixedBreakdown.bs}Bs via ${mixedBreakdown.methodBs})`
     }
 
-    const record: SaleRecord = {
-      id: saleId,
-      saleNumber: saleId,
-      items: cart.map((i) => ({ 
-        productId: i.id, sku: i.sku, name: i.name, qty: i.quantity, price: i.price, 
-        discount: i.discount, warrantyDays: i.warrantyDays 
-      })),
-      subtotal, globalDiscount, iva, total,
-      totalBs,
-      paymentMethod: finalMethod,
-      cashier: user?.name || '',
-      date: now.toISOString().split('T')[0],
-      time: now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      customerId: selectedCustomer?.id || null,
-      paymentProof: paymentProof || undefined
+    const saleItems = cart.map((i) => ({ 
+      productId: i.id, sku: i.sku, name: i.name, qty: i.quantity, price: i.price, 
+      discount: i.discount, warrantyDays: i.warrantyDays 
+    }))
+
+    const data = new FormData()
+    data.append('saleNumber', saleId)
+    data.append('items', JSON.stringify(saleItems))
+    data.append('subtotal', String(subtotal))
+    data.append('globalDiscount', String(globalDiscount))
+    data.append('iva', String(iva))
+    data.append('total', String(total))
+    data.append('totalBs', String(totalBs))
+    data.append('paymentMethod', finalMethod)
+    data.append('cashier', user?.name || 'Sistema')
+    data.append('date', now.toISOString().split('T')[0])
+    data.append('time', now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+    if (selectedCustomer?.id) data.append('customerId', selectedCustomer.id)
+    
+    if (paymentProof instanceof File) {
+      data.append('paymentProofFile', paymentProof)
+    } else if (paymentProof) {
+      data.append('paymentProof', paymentProof)
     }
     
     try {
-      await addSale(record)
+      await (addSale as any)(data)
       console.log(`[FRONTEND-POS] Sale ${saleId} completed successfully`)
       await refreshProducts()
       setCart([])
@@ -341,7 +358,15 @@ export function POSComponent() {
                   <div key={p.id} className="p-2 hover:bg-blue-600/20 cursor-pointer flex justify-between items-center border-b border-slate-700/50 last:border-0 group">
                     <div className="flex items-center gap-3 flex-1" onClick={() => addToCart(p)}>
                       <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center overflow-hidden border border-slate-600 shrink-0">
-                         {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-cover" /> : <span className="text-sm">{p.image || '📦'}</span>}
+                         {p.image ? (
+                           <img 
+                             src={p.image.startsWith('data:') ? p.image : `${getBaseUrl()}${p.image}`} 
+                             className="w-full h-full object-cover" 
+                             alt={p.name}
+                           />
+                         ) : (
+                           <span className="text-sm">📦</span>
+                         )}
                       </div>
                       <div className="text-xs">
                         <div className="font-bold">{p.name}</div>
@@ -385,7 +410,15 @@ export function POSComponent() {
                       <td className="py-2.5">
                         <div className="flex items-center gap-3">
                            <button onClick={() => setShowProductDetail(products.find(p => p.id === i.id))} className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden border border-slate-700 shrink-0 hover:border-blue-500 transition-all">
-                              {i.image?.startsWith('data:image') ? <img src={i.image} className="w-full h-full object-cover" /> : <span className="text-lg">{i.image || '📦'}</span>}
+                              {i.image ? (
+                                <img 
+                                  src={i.image.startsWith('data:') ? i.image : `${getBaseUrl()}${i.image}`} 
+                                  className="w-full h-full object-cover" 
+                                  alt={i.name}
+                                />
+                              ) : (
+                                <span className="text-lg">📦</span>
+                              )}
                            </button>
                            <div>
                               <div className="font-bold text-[13px]">{i.name}</div>
@@ -639,9 +672,17 @@ export function POSComponent() {
               <div className="flex justify-between items-start mb-4">
                  <button onClick={() => setShowProductDetail(null)} className="text-2xl opacity-30 hover:opacity-100">×</button>
               </div>
-              <div className="w-full h-48 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-center overflow-hidden mb-6 shadow-inner">
-                 {showProductDetail.image?.startsWith('data:image') ? <img src={showProductDetail.image} className="w-full h-full object-contain" /> : <span className="text-7xl">{showProductDetail.image || '📦'}</span>}
-              </div>
+               <div className="w-full h-48 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-center overflow-hidden mb-6 shadow-inner">
+                  {showProductDetail.image ? (
+                    <img 
+                      src={showProductDetail.image.startsWith('data:') ? showProductDetail.image : `${getBaseUrl()}${showProductDetail.image}`} 
+                      className="w-full h-full object-contain" 
+                      alt={showProductDetail.name}
+                    />
+                  ) : (
+                    <span className="text-7xl">📦</span>
+                  )}
+               </div>
               <div className="space-y-3">
                  <div>
                     <span className="text-[9px] font-black uppercase tracking-widest text-blue-500">{showProductDetail.category}</span>

@@ -10,6 +10,7 @@ interface CustomerProfileModalProps {
 export function CustomerProfileModal({ customer, onClose, onSave, isAdmin = false }: CustomerProfileModalProps) {
   const [activeTab, setActiveTab] = useState<'info' | 'loyalty' | 'history'>('info')
   const [formData, setFormData] = useState({ ...customer })
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
 
   const handleChange = (field: string, value: any) => {
@@ -19,18 +20,27 @@ export function CustomerProfileModal({ customer, onClose, onSave, isAdmin = fals
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        handleChange('photo', reader.result)
-      }
-      reader.readAsDataURL(file)
+      setPhotoFile(file)
+      // Visual feedback via temporary local URL
+      handleChange('photo', URL.createObjectURL(file))
     }
   }
 
   const handleSave = async () => {
     setLoading(true)
     try {
-      await onSave(formData)
+      if (photoFile) {
+        const data = new FormData()
+        Object.keys(formData).forEach(key => {
+          if (key !== 'photo' && key !== 'orders' && key !== 'sales' && key !== 'tickets' && key !== 'loyaltyMovements') {
+            data.append(key, (formData as any)[key])
+          }
+        })
+        data.append('photoFile', photoFile)
+        await onSave(data)
+      } else {
+        await onSave(formData)
+      }
       onClose()
     } catch (e) {
       alert('Error al guardar cambios')

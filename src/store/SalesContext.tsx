@@ -114,11 +114,11 @@ export function SalesProvider({ children }: { children: ReactNode }) {
     }
   }, [subscribe])
 
-  const addSale = async (sale: SaleRecord) => {
+  const addSale = async (data: SaleRecord | FormData) => {
     try {
       const resp = await fetchWithAuth('/api/sales', {
         method: 'POST',
-        body: JSON.stringify(sale)
+        body: data instanceof FormData ? data : JSON.stringify(data)
       })
       if (!resp.ok) {
         const err = await resp.json()

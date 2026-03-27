@@ -3,9 +3,26 @@ import { prisma } from '../db.js'
 import { authenticate, ipFilter } from '../middleware/auth.js'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import multer from 'multer'
+import path from 'path'
+import fs from 'fs'
 
 const router = express.Router()
 const JWT_SECRET = process.env.JWT_SECRET || 'rexermi-secret-key-2024'
+
+// Multer Config
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = 'backend/src/uploads/users'
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    cb(null, dir)
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, 'u-' + uniqueSuffix + path.extname(file.originalname))
+  }
+})
+const upload = multer({ storage })
 
 router.get('/needs-setup', async (req, res) => {
   console.log('[AUTH] Checking if setup is needed...')
@@ -105,8 +122,8 @@ router.post('/register', async (req, res, next) => {
   } catch (e) {
     authenticate(req, res, next)
   }
-}, ipFilter, async (req, res) => {
-  const { name, username, password, role, avatar, pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings } = req.body
+}, ipFilter, upload.single('photoFile'), async (req, res) => {
+  const { name, username, password, role, avatar, pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings, photo } = req.body
   console.log(`[AUTH] Registering new user: ${username} (${role})`)
   try {
     const hashedPassword = await bcrypt.hash(password, 10)
@@ -118,7 +135,7 @@ router.post('/register', async (req, res, next) => {
         pSettings: !!pSettings,
         cedula: req.body.cedula || '',
         phone: req.body.phone || '',
-        photo: req.body.photo || '',
+        photo: req.file ? `/uploads/users/${req.file.filename}` : (photo || ''),
         address: req.body.address || '',
         gender: req.body.gender || '',
         birthday: req.body.birthday ? new Date(req.body.birthday) : null,
@@ -144,19 +161,21 @@ router.post('/register', async (req, res, next) => {
   }
 })
 
-router.patch('/:id', authenticate, ipFilter, async (req, res) => {
+router.patch('/:id', authenticate, ipFilter, upload.single('photoFile'), async (req, res) => {
   const { 
     name, username, password, role, avatar, 
-    pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings
+    pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings, photo
   } = req.body
   console.log(`[AUTH] Updating user ID: ${req.params.id} (${username})`)
   try {
     const data = { 
       name, username, role, avatar, 
-      pPOS, pInventory, pSales, pService, pOrders, pCustomers, pSettings,
+      pPOS: !!pPOS, pInventory: !!pInventory, pSales: !!pSales, 
+      pService: !!pService, pOrders: !!pOrders, pCustomers: !!pCustomers, 
+      pSettings: !!pSettings,
       cedula: req.body.cedula,
       phone: req.body.phone,
-      photo: req.body.photo,
+      photo: req.file ? `/uploads/users/${req.file.filename}` : photo,
       address: req.body.address,
       gender: req.body.gender,
       birthday: req.body.birthday ? new Date(req.body.birthday) : undefined,

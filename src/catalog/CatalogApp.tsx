@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useCustomer } from '../store/CustomerContext'
 import { useProductStore, Product } from '../store/ProductStore'
 import { getBaseUrl } from '../utils/api'
 import { CustomerProfileModal } from '../components/CustomerProfileModal'
 
-type Page = 'home' | 'product' | 'cart' | 'checkout' | 'orders' | 'login' | 'register'
+type Page = 'home' | 'product' | 'cart' | 'checkout' | 'orders' | 'prints' | 'login' | 'register'
 
 export function CatalogApp() {
   const { customer, logoutCustomer, cartCount, config, updateCustomer } = useCustomer()
@@ -22,7 +22,9 @@ export function CatalogApp() {
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <button onClick={() => { setPage('home'); setCategoryFilter('all') }} className="flex items-center gap-2 group">
             <div className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center font-bold text-sm shadow-lg overflow-hidden border border-slate-700 group-hover:border-blue-500/50 transition-all">
-              {config.companyLogo ? <img src={config.companyLogo} className="w-full h-full object-contain" /> : 'R'}
+              {config.companyLogo?.startsWith('data:image') ? <img src={config.companyLogo} className="w-full h-full object-contain" /> : 
+               config.companyLogo?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${config.companyLogo}`} className="w-full h-full object-contain" /> : 
+               'R'}
             </div>
             <div className="flex flex-col items-start leading-none">
               <span className="font-black text-sm tracking-tighter">{config.storeName}</span>
@@ -32,6 +34,7 @@ export function CatalogApp() {
 
           <div className="flex items-center gap-3">
             <button onClick={() => setPage('home')} className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${page === 'home' ? 'bg-blue-600/15 text-blue-400' : 'text-slate-400 hover:text-white'}`}>Catálogo</button>
+            <button onClick={() => setPage('prints')} className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${page === 'prints' ? 'bg-blue-600/15 text-blue-400' : 'text-slate-400 hover:text-white'}`}>Impresiones</button>
             {customer && <button onClick={() => setPage('orders')} className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${page === 'orders' ? 'bg-blue-600/15 text-blue-400' : 'text-slate-400 hover:text-white'}`}>Mis Pedidos</button>}
             <button onClick={() => setPage('cart')} className="relative text-slate-400 hover:text-white transition-colors p-1.5">
               🛒
@@ -41,7 +44,9 @@ export function CatalogApp() {
               <div className="flex items-center gap-2">
                 <button onClick={() => setShowProfile(true)} className="flex items-center gap-2 hover:bg-slate-800 p-1 rounded-lg transition-all group">
                   <div className="w-6 h-6 bg-slate-800 rounded-full flex items-center justify-center text-[10px] overflow-hidden border border-slate-700">
-                    {customer.photo ? <img src={customer.photo} className="w-full h-full object-cover" /> : '👤'}
+                    {customer.photo?.startsWith('data:image') ? <img src={customer.photo} className="w-full h-full object-cover" /> : 
+                     customer.photo?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${customer.photo}`} className="w-full h-full object-cover" /> :
+                     '👤'}
                   </div>
                   <span className="text-[10px] text-slate-400 font-bold group-hover:text-white transition-colors">{customer.name.split(' ')[0]}</span>
                 </button>
@@ -60,6 +65,7 @@ export function CatalogApp() {
         {page === 'cart' && <CartPage goCheckout={() => customer ? setPage('checkout') : setPage('login')} goHome={() => setPage('home')} />}
         {page === 'checkout' && <CheckoutPage goOrders={() => setPage('orders')} goHome={() => setPage('home')} />}
         {page === 'orders' && <OrdersPage />}
+        {page === 'prints' && <PrintPage />}
         {page === 'login' && <LoginPage goRegister={() => setPage('register')} onSuccess={() => setPage('home')} />}
         {page === 'register' && <RegisterPage goLogin={() => setPage('login')} onSuccess={() => setPage('home')} />}
       </main>
@@ -71,13 +77,14 @@ export function CatalogApp() {
           onClose={() => setShowProfile(false)} 
           onSave={async (updated) => {
              const token = localStorage.getItem('customerToken')
+             const isFormData = updated instanceof FormData
              const res = await fetch(`${getBaseUrl()}/api/customers/me`, {
                method: 'PATCH',
                headers: { 
-                 'Content-Type': 'application/json',
+                 ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
                  'Authorization': `Bearer ${token}`
                },
-               body: JSON.stringify(updated)
+               body: isFormData ? updated : JSON.stringify(updated)
              })
              if (res.ok) {
                const data = await res.json()
@@ -119,7 +126,9 @@ function CatalogHome({ openProduct, categoryFilter, setCategoryFilter, config }:
         
         {config.companyLogo && (
           <div className="w-32 h-32 bg-slate-900/50 rounded-[2.5rem] border border-blue-500/20 p-6 flex items-center justify-center shadow-2xl relative z-10 shrink-0">
-            <img src={config.companyLogo} className="w-full h-full object-contain" />
+            {config.companyLogo?.startsWith('data:image') ? <img src={config.companyLogo} className="w-full h-full object-contain" /> : 
+             config.companyLogo?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${config.companyLogo}`} className="w-full h-full object-contain" /> :
+             <span className="text-4xl text-blue-500">🚀</span>}
           </div>
         )}
         
@@ -142,7 +151,9 @@ function CatalogHome({ openProduct, categoryFilter, setCategoryFilter, config }:
               <button key={p.id} onClick={() => openProduct(p.id)}
                 className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border border-slate-700/50 rounded-xl p-4 text-left hover:border-blue-500/30 hover:shadow-lg hover:shadow-blue-500/5 transition-all group">
                 <div className="w-12 h-12 mb-2 flex items-center justify-center overflow-hidden rounded-lg">
-                  {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-cover" /> : <span className="text-3xl">{p.image}</span>}
+                  {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-cover" /> : 
+                   p.image?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${p.image}`} className="w-full h-full object-cover" /> : 
+                   <span className="text-3xl">{p.image}</span>}
                 </div>
                 <h3 className="font-bold text-xs line-clamp-2 group-hover:text-blue-400 transition-colors">{p.name}</h3>
                 <p className="text-green-400 font-mono font-bold text-sm mt-1">${p.price.toFixed(2)}</p>
@@ -166,7 +177,9 @@ function CatalogHome({ openProduct, categoryFilter, setCategoryFilter, config }:
           <div key={p.id} className="bg-slate-900/70 border border-slate-800 rounded-xl overflow-hidden hover:border-slate-700 transition-all group relative">
             <button onClick={() => setQuickView(p)} className="w-full p-5 text-center">
               <div className="w-20 h-20 mx-auto mb-2 flex items-center justify-center overflow-hidden rounded-xl group-hover:scale-110 transition-transform">
-                {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-cover" /> : <span className="text-4xl">{p.image}</span>}
+                {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-cover" /> : 
+                 p.image?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${p.image}`} className="w-full h-full object-cover" /> :
+                 <span className="text-4xl">{p.image}</span>}
               </div>
               <h3 className="font-semibold text-xs line-clamp-2 min-h-[32px]">{p.name}</h3>
               <div className="flex items-center justify-center gap-2 mt-2">
@@ -187,7 +200,9 @@ function CatalogHome({ openProduct, categoryFilter, setCategoryFilter, config }:
         <div className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[200] p-6" onClick={() => setQuickView(null)}>
            <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
               <div className="w-full h-48 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-center overflow-hidden mb-6">
-                 {quickView.image?.startsWith('data:image') ? <img src={quickView.image} className="w-full h-full object-contain" /> : <span className="text-7xl">{quickView.image || '📦'}</span>}
+                 {quickView.image?.startsWith('data:image') ? <img src={quickView.image} className="w-full h-full object-contain" /> : 
+                  quickView.image?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${quickView.image}`} className="w-full h-full object-contain" /> :
+                  <span className="text-7xl">{quickView.image || '📦'}</span>}
               </div>
               <div className="space-y-3">
                  <div>
@@ -234,7 +249,9 @@ function ProductDetail({ id, goBack, goCart }: { id: string; goBack: () => void;
       <button onClick={goBack} className="text-slate-500 hover:text-white text-xs mb-4 flex items-center gap-1 transition-colors">← Volver al catálogo</button>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex items-center justify-center min-h-[300px] overflow-hidden">
-          {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-contain rounded-xl" /> : <span className="text-8xl">{p.image}</span>}
+          {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-contain rounded-xl" /> : 
+           p.image?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${p.image}`} className="w-full h-full object-contain rounded-xl" /> :
+           <span className="text-8xl">{p.image}</span>}
         </div>
         <div>
           <span className="text-[9px] uppercase tracking-widest text-blue-400 font-bold">{p.category}</span>
@@ -312,7 +329,9 @@ function CartPage({ goCheckout, goHome }: { goCheckout: () => void; goHome: () =
           {cart.map((item) => (
             <div key={item.productId} className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
               <div className="w-12 h-12 flex items-center justify-center overflow-hidden rounded-lg bg-slate-800">
-                {item.image?.startsWith('data:image') ? <img src={item.image} className="w-full h-full object-cover" /> : <span className="text-xl">{item.image}</span>}
+                {item.image?.startsWith('data:image') ? <img src={item.image} className="w-full h-full object-cover" /> : 
+                 item.image?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${item.image}`} className="w-full h-full object-cover" /> :
+                 <span className="text-xl">{item.image}</span>}
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-sm truncate">{item.name}</h3>
@@ -417,10 +436,16 @@ function CheckoutPage({ goOrders, goHome }: { goOrders: () => void; goHome: () =
     if (loading) return
     setLoading(true)
     try {
-      const order = await placeOrder(payMethod)
+      const pRef = (window as any)._pendingPaymentRef || ''
+      const pProof = (window as any)._pendingPaymentProofFile || (window as any)._pendingPaymentProof || null
+      const order = await placeOrder(payMethod, pRef, pProof)
       if (order) {
         setOrderPlaced(order.id)
         await refreshProfile()
+        // Cleanup
+        delete (window as any)._pendingPaymentProofFile
+        delete (window as any)._pendingPaymentProof
+        delete (window as any)._pendingPaymentRef
       } else {
         alert('No se pudo procesar el pedido. Verifique su conexión o stock disponible.')
       }
@@ -489,9 +514,7 @@ function CheckoutPage({ goOrders, goHome }: { goOrders: () => void; goHome: () =
                     onChange={(e) => {
                       const file = e.target.files?.[0]
                       if (file) {
-                        const reader = new FileReader()
-                        reader.onloadend = () => { (window as any)._pendingPaymentProof = reader.result }
-                        reader.readAsDataURL(file)
+                        (window as any)._pendingPaymentProofFile = file
                       }
                     }}
                     className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-blue-600/10 file:text-blue-400 hover:file:bg-blue-600/20 cursor-pointer" 
@@ -661,6 +684,171 @@ function RegisterPage({ goLogin, onSuccess }: { goLogin: () => void; onSuccess: 
         {error && <p className="text-red-400 text-xs text-center bg-red-500/10 py-1.5 rounded-lg border border-red-500/20">{error}</p>}
         <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 py-2.5 rounded-xl font-bold text-sm transition-all">Crear Cuenta</button>
         <p className="text-center text-xs text-slate-500 pt-2">¿Ya tienes cuenta? <button type="button" onClick={goLogin} className="text-blue-400 hover:underline font-semibold">Inicia Sesión</button></p>
+      </form>
+    </div>
+  )
+}
+
+/* ==================== PRINT PAGE ==================== */
+function PrintPage() {
+  const { customer, config } = useCustomer()
+  const [file, setFile] = useState<File | null>(null)
+  const [paperType, setPaperType] = useState('Bond')
+  const [colorMode, setColorMode] = useState('BW')
+  const [sides, setSides] = useState('SIMPLE')
+  const [quantity, setQuantity] = useState(1)
+  const [pages, setPages] = useState(1)
+  const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
+
+  // Auto-detect PDF pages
+  useEffect(() => {
+    if (!file) { setPages(1); return }
+    if (file.type !== 'application/pdf') return
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const content = e.target?.result as string
+      // Simple PDF page count detection
+      const matches = content.match(/\/Count\s+(\d+)/g)
+      if (matches) {
+        const count = parseInt(matches[matches.length - 1].split(/\s+/)[1])
+        if (count > 0) setPages(count)
+      }
+    }
+    reader.readAsBinaryString(file.slice(0, 50000)) // Only read beginning/tags
+  }, [file])
+
+  // Pricing from dynamic config
+  const prices = {
+    Bond: config.pPriceBond ?? 0.2,
+    Fotográfico: config.pPricePhoto ?? 1.5,
+    Glace: config.pPriceGlace ?? 2.0,
+    COLOR: config.pPriceColorMult ?? 2.5,
+    BW: config.pPriceBWMult ?? 1.0,
+    SIMPLE: config.pPriceSimpleMult ?? 1.0,
+    DOBLE: config.pPriceDoubleMult ?? 1.8
+  }
+
+  const estimatedTotal = (prices[paperType as keyof typeof prices] || 0) * 
+                        (prices[colorMode as keyof typeof prices] || 1) * 
+                        (prices[sides as keyof typeof prices] || 1) * 
+                        pages *
+                        quantity
+
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!file) return alert('Seleccione un archivo')
+    if (!customer) return alert('Debe iniciar sesión para solicitar presupuesto')
+
+    setLoading(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('customerName', customer.name)
+    formData.append('customerPhone', customer.phone || '')
+    formData.append('customerId', customer.id)
+    formData.append('paperType', paperType)
+    formData.append('colorMode', colorMode)
+    formData.append('sides', sides)
+    formData.append('quantity', String(quantity))
+    formData.append('pages', String(pages))
+
+    try {
+      const resp = await fetch(`${getBaseUrl()}/api/prints/upload`, {
+        method: 'POST',
+        body: formData
+      })
+      if (!resp.ok) throw new Error('Error al subir')
+      setSuccess(true)
+    } catch (e) {
+      alert('Error al enviar presupuesto')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (success) return (
+    <div className="text-center py-12">
+      <div className="w-16 h-16 bg-green-500/10 border border-green-500/30 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">📄</div>
+      <h2 className="text-xl font-bold">Solicitud Enviada</h2>
+      <p className="text-slate-400 mt-2 text-sm">Hemos recibido su archivo correctamente. Un técnico revisará el documento y notificará el presupuesto final en breve.</p>
+      <button onClick={() => window.location.reload()} className="mt-6 bg-blue-600 hover:bg-blue-700 px-6 py-2.5 rounded-xl font-bold text-xs">Nueva Solicitud</button>
+    </div>
+  )
+
+  return (
+    <div className="max-w-xl mx-auto">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 bg-blue-600/20 rounded-xl flex items-center justify-center text-xl text-blue-400">🖨️</div>
+        <div>
+          <h2 className="text-lg font-black tracking-tight">Presupuesto de Impresión</h2>
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Sube tus archivos y ahorra tiempo</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleUpload} className="space-y-4">
+        <div className="bg-slate-900/70 border border-slate-800 rounded-[2rem] p-6 space-y-6">
+          {/* File Upload */}
+          <div className="relative group">
+            <label className="text-[10px] font-black uppercase text-slate-600 mb-2 block">Documento (PDF, Imagen, Word)</label>
+            <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-2xl cursor-pointer transition-all ${file ? 'border-blue-500/50 bg-blue-500/5' : 'border-slate-800 bg-slate-950/50 hover:bg-slate-900 hover:border-slate-700'}`}>
+              <div className="flex flex-col items-center justify-center py-4">
+                <p className="text-2xl mb-2">{file ? '📎' : '☁️'}</p>
+                <p className="text-xs font-bold text-slate-400">{file ? file.name : 'Haz clic para subir (Máx 20MB)'}</p>
+                {file && <p className="text-[9px] text-slate-600 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</p>}
+              </div>
+              <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black uppercase text-slate-600 mb-2 block">Tipo de Papel</label>
+              <select value={paperType} onChange={e => setPaperType(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500">
+                <option value="Bond">Bond (Estándar)</option>
+                <option value="Fotográfico">Fotográfico</option>
+                <option value="Glace">Glace / Pro</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase text-slate-600 mb-2 block">Color</label>
+              <div className="flex p-1 bg-slate-950 border border-slate-800 rounded-xl">
+                 <button type="button" onClick={() => setColorMode('BW')} className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all ${colorMode === 'BW' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>B/N</button>
+                 <button type="button" onClick={() => setColorMode('COLOR')} className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all ${colorMode === 'COLOR' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>Color</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black uppercase text-slate-600 mb-2 block">Caras</label>
+              <div className="flex p-1 bg-slate-950 border border-slate-800 rounded-xl">
+                 <button type="button" onClick={() => setSides('SIMPLE')} className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all ${sides === 'SIMPLE' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Simple</button>
+                 <button type="button" onClick={() => setSides('DOBLE')} className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all ${sides === 'DOBLE' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Doble</button>
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase text-slate-600 mb-2 block">Número de Páginas</label>
+              <input type="number" min="1" value={pages} onChange={e => setPages(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase text-slate-600 mb-2 block">Cantidad (Juegos)</label>
+              <input type="number" min="1" value={quantity} onChange={e => setQuantity(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+
+          <div className="bg-blue-600/10 border border-blue-500/20 p-4 rounded-2xl">
+             <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-blue-400">Presupuesto Estimado *</span>
+                <span className="text-xl font-black text-white font-mono">${estimatedTotal.toFixed(2)}</span>
+             </div>
+             <p className="text-[9px] text-blue-500/70 mt-2 leading-tight">* Este monto es referencial por carilla. El precio final será validado por un técnico tras revisar el número de páginas y requerimientos.</p>
+          </div>
+
+          <button type="submit" disabled={loading || !file} className="w-full bg-blue-600 hover:bg-blue-700 py-3.5 rounded-2xl font-black text-sm shadow-xl shadow-blue-900/20 active:scale-[0.98] transition-all disabled:opacity-50">
+            {loading ? 'Subiendo archivo...' : 'Solicitar Presupuesto'}
+          </button>
+        </div>
       </form>
     </div>
   )

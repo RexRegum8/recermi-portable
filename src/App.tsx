@@ -11,8 +11,9 @@ import { OrderManager } from './components/OrderManager'
 import { CustomerManager } from './components/CustomerManager'
 import { QuotationManager } from './components/QuotationManager'
 import { UserProfileModal } from './components/UserProfileModal'
+import { PrintInbox } from './components/PrintInbox'
 
-type TabType = 'pos' | 'sales' | 'service' | 'inventory' | 'settings' | 'orders' | 'customers' | 'quotations'
+type TabType = 'pos' | 'sales' | 'service' | 'inventory' | 'settings' | 'orders' | 'customers' | 'quotations' | 'prints'
 
 function App() {
   const { user, config, updateConfig, logout, canPOS, canSales, canOrders, canService, canInventory, canCustomers, canSettings, updateUser } = useAuth()
@@ -57,6 +58,7 @@ function App() {
     { id: 'quotations', icon: '📝', label: 'Presupuestos', show: canSales },
     { id: 'orders', icon: '📦', label: 'Pedidos Web', show: canOrders },
     { id: 'service', icon: '🛠️', label: 'Servicio', show: canService },
+    { id: 'prints', icon: '🖨️', label: 'Impresiones', show: canService },
     { id: 'inventory', icon: '📦', label: 'Inventario', show: canInventory },
     { id: 'customers', icon: '👥', label: 'Clientes', show: canCustomers },
     { id: 'settings', icon: '⚙️', label: 'Ajustes', show: canSettings },
@@ -104,7 +106,8 @@ function App() {
         {activeTab === 'service' && <ServiceDashboard />}
         {activeTab === 'inventory' && <InventoryManager />}
         {activeTab === 'customers' && <CustomerManager />}
-        {activeTab === 'settings' && <AdminSettings />}
+        { activeTab === 'settings' && <AdminSettings /> }
+        { activeTab === 'prints' && <PrintInbox /> }
       </main>
 
       {showMyProfile && (

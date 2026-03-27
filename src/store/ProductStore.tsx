@@ -22,14 +22,17 @@ interface ProductStoreContextType {
   featured: Product[]
   refreshProducts: () => Promise<void>
   refreshRewards: () => Promise<void>
-  createProduct: (p: Partial<Product>) => Promise<void>
-  updateProduct: (id: string, p: Partial<Product>) => Promise<void>
+  createProduct: (p: Partial<Product> | FormData) => Promise<void>
+  updateProduct: (id: string, p: Partial<Product> | FormData) => Promise<void>
+  deleteProduct: (id: string) => Promise<void>
   recordMovement: (id: string, m: { quantity: number, type: string, reason: string, user: string }) => Promise<void>
   createReward: (r: Partial<LoyaltyReward>) => Promise<void>
   updateReward: (id: string, r: Partial<LoyaltyReward>) => Promise<void>
   deleteReward: (id: string) => Promise<void>
   getProductBySku: (sku: string) => Product | undefined
   getProduct: (id: string) => Product | undefined
+  pendingPosItem: any | null
+  setPendingPosItem: (item: any | null) => void
 }
 
 const ProductStoreContext = createContext<ProductStoreContextType | null>(null)
@@ -37,6 +40,7 @@ const ProductStoreContext = createContext<ProductStoreContextType | null>(null)
 export function ProductStoreProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([])
   const [rewards, setRewards] = useState<LoyaltyReward[]>([])
+  const [pendingPosItem, setPendingPosItem] = useState<any | null>(null)
 
   const { subscribe } = useSocket()
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 })
@@ -74,14 +78,25 @@ export function ProductStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refreshProducts()
     refreshRewards()
+    
+    // Refresh when socket connects to recover from initial failures
+    const handleConnect = () => {
+      console.log('[FRONTEND-PRODS] Socket connected, refreshing data...')
+      refreshProducts()
+      refreshRewards()
+    }
+    
+    subscribe('connect', handleConnect)
   }, [])
 
-  const createProduct = async (p: Partial<Product>) => {
-    console.log(`[FRONTEND-PRODS] Creating product: ${p.name} (SKU: ${p.sku})`)
+  const createProduct = async (p: Partial<Product> | FormData) => {
+    const isFormData = p instanceof FormData
+    const name = isFormData ? (p as FormData).get('name') : (p as Partial<Product>).name
+    console.log(`[FRONTEND-PRODS] Creating product: ${name}`)
     try {
       const res = await fetchWithAuth('/api/products', {
         method: 'POST',
-        body: JSON.stringify(p)
+        body: isFormData ? p : JSON.stringify(p)
       })
       if (!res.ok) throw new Error('Failed to create product')
       console.log('[FRONTEND-PRODS] Product created successfully')
@@ -92,12 +107,12 @@ export function ProductStoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const updateProduct = async (id: string, p: Partial<Product>) => {
+  const updateProduct = async (id: string, p: Partial<Product> | FormData) => {
     console.log(`[FRONTEND-PRODS] Updating product ID: ${id}`)
     try {
       const res = await fetchWithAuth(`/api/products/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify(p)
+        body: p instanceof FormData ? p : JSON.stringify(p)
       })
       if (!res.ok) throw new Error('Failed to update product')
       console.log(`[FRONTEND-PRODS] Product ${id} updated successfully`)
@@ -145,6 +160,19 @@ export function ProductStoreProvider({ children }: { children: ReactNode }) {
     await refreshRewards()
   }
 
+  const deleteProduct = async (id: string) => {
+    console.log(`[FRONTEND-PRODS] Deleting product ID: ${id}`)
+    try {
+      const res = await fetchWithAuth(`/api/products/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete product')
+      console.log(`[FRONTEND-PRODS] Product ${id} deleted successfully`)
+      await refreshProducts()
+    } catch (e: any) {
+      console.error(`[FRONTEND-PRODS] Error deleting product ${id}: ${e.message}`)
+      throw e
+    }
+  }
+
   const categories = Array.from(new Set(products.map((p) => p.category)))
   const featured = products.filter((p) => p.featured)
   const getProductBySku = (sku: string) => products.find((p) => p.sku === sku)
@@ -153,8 +181,9 @@ export function ProductStoreProvider({ children }: { children: ReactNode }) {
   return (
     <ProductStoreContext.Provider value={{ 
       products, rewards, categories, featured, getProductBySku, getProduct,
-      refreshProducts, refreshRewards, createProduct, updateProduct, recordMovement,
-      createReward, updateReward, deleteReward
+      refreshProducts, refreshRewards, createProduct, updateProduct, deleteProduct, recordMovement,
+      createReward, updateReward, deleteReward,
+      pendingPosItem, setPendingPosItem
     }}>
       {children}
     </ProductStoreContext.Provider>

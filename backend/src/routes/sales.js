@@ -1,7 +1,22 @@
 import express from 'express'
 import { prisma } from '../db.js'
+import multer from 'multer'
+import path from 'path'
 
 const router = express.Router()
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = 'backend/src/uploads/sales'
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    cb(null, dir)
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, 's-' + uniqueSuffix + path.extname(file.originalname))
+  }
+})
+const upload = multer({ storage })
 
 // Get all sales with pagination
 router.get('/', async (req, res) => {
@@ -74,8 +89,13 @@ router.post('/closure', async (req, res) => {
 })
 
 // Register a sale
-router.post('/', async (req, res) => {
-  const { saleNumber, items, subtotal, globalDiscount, iva, total, totalBs, paymentMethod, paymentRef, paymentProof, cashier, date, time, customerId } = req.body
+router.post('/', upload.single('paymentProofFile'), async (req, res) => {
+  const { saleNumber, items: itemsRaw, subtotal, globalDiscount, iva, total, totalBs, paymentMethod, paymentRef, paymentProof: proofRaw, cashier, date, time, customerId } = req.body
+  const items = typeof itemsRaw === 'string' ? JSON.parse(itemsRaw) : itemsRaw
+  let paymentProof = proofRaw
+  if (req.file) {
+    paymentProof = `/uploads/sales/${req.file.filename}`
+  }
   console.log(`[SALES] Registering sale: ${saleNumber} by cashier: ${cashier}`)
   try {
     const sale = await prisma.$transaction(async (tx) => {
@@ -106,26 +126,53 @@ router.post('/', async (req, res) => {
         }
       }
 
+      // 1. Recalculate totals from DB to ensure integrity
+      let calculatedSubtotal = 0
+      const processedItems = []
+      
+      for (const item of items) {
+        const product = await tx.product.findUnique({ where: { id: item.productId } })
+        if (!product) throw new Error(`Producto no encontrado: ${item.sku}`)
+        
+        const price = product.price
+        const itemDiscount = item.discount || 0
+        const itemTotal = price * item.qty * (1 - itemDiscount / 100)
+        
+        calculatedSubtotal += itemTotal
+        processedItems.push({
+          productId: item.productId,
+          qty: item.qty,
+          price: price,
+          discount: itemDiscount,
+          warrantyDays: item.warrantyDays || product.warrantyDays || 0
+        })
+      }
+
+      const calculatedIva = calculatedSubtotal * (config.ivaPercent / 100)
+      const calculatedTotal = calculatedSubtotal + calculatedIva
+      const calculatedTotalBs = calculatedTotal * config.exchangeRateBCV
+
       // 1. Create Sale
       const createdSale = await tx.sale.create({
         data: {
-          saleNumber: finalSaleNumber, subtotal, globalDiscount, iva, total, totalBs, paymentMethod, paymentRef, paymentProof, cashier, date, time,
+          saleNumber: finalSaleNumber,
+          subtotal: calculatedSubtotal,
+          globalDiscount: globalDiscount || 0,
+          iva: calculatedIva,
+          total: calculatedTotal,
+          totalBs: calculatedTotalBs,
+          paymentMethod: paymentMethod || 'Efectivo',
+          paymentRef, paymentProof, cashier, date, time,
           sessionId: activeSession?.id,
           customerId: customerId || null,
           items: {
-            create: items.map(i => ({
-              productId: i.productId,
-              qty: i.qty,
-              price: i.price,
-              discount: i.discount || 0,
-              warrantyDays: i.warrantyDays || 0
-            }))
+            create: processedItems
           }
         }
       })
 
-      // 2. Update stock & Record points
-      for (const item of items) {
+      // 2. Update stock
+      for (const item of processedItems) {
         await tx.product.update({
           where: { id: item.productId },
           data: { stock: { decrement: item.qty } }

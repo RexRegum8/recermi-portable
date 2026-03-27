@@ -48,7 +48,7 @@ interface CustomerContextType {
   cartSubtotal: number
   cartTotal: number
   cartCount: number
-  placeOrder: (paymentMethod: string) => Promise<Order | null>
+  placeOrder: (paymentMethod: string, paymentRef: string, paymentProof: File | string | null) => Promise<Order | null>
 }
 
 import { getBaseUrl, fetchWithAuth } from '../utils/api'
@@ -162,18 +162,24 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   const cartTotal = customer?.pendingDiscount && customer.pendingDiscount > 0 ? cartSubtotal * (1 - customer.pendingDiscount / 100) : cartSubtotal
   const cartCount = cart.reduce((a, i) => a + i.quantity, 0)
 
-  const placeOrder = async (paymentMethod: string): Promise<Order | null> => {
+  const placeOrder = async (paymentMethod: string, paymentRef: string, paymentProof: File | string | null): Promise<Order | null> => {
     if (!customer || cart.length === 0) return null
     try {
+      const data = new FormData()
+      data.append('items', JSON.stringify(cart.map(i => ({ productId: i.productId, qty: i.quantity, price: i.price }))))
+      data.append('total', String(cartTotal))
+      data.append('paymentMethod', paymentMethod)
+      data.append('paymentRef', paymentRef)
+      
+      if (paymentProof instanceof File) {
+        data.append('paymentProofFile', paymentProof)
+      } else if (paymentProof) {
+        data.append('paymentProof', paymentProof)
+      }
+
       const resp = await fetchWithAuth('/api/customers/orders', {
         method: 'POST',
-        body: JSON.stringify({
-          items: cart.map(i => ({ productId: i.productId, qty: i.quantity, price: i.price })),
-          total: cartTotal,
-          paymentMethod,
-          paymentRef: (window as any)._pendingPaymentRef || '',
-          paymentProof: (window as any)._pendingPaymentProof || ''
-        })
+        body: data
       })
       if (!resp.ok) {
         const err = await resp.json()

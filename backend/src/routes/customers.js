@@ -2,8 +2,23 @@ import express from 'express'
 import { prisma } from '../db.js'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import multer from 'multer'
+import path from 'path'
 
 const router = express.Router()
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = 'backend/src/uploads/customers'
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    cb(null, dir)
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, 'c-' + uniqueSuffix + path.extname(file.originalname))
+  }
+})
+const upload = multer({ storage })
 const JWT_SECRET = process.env.JWT_SECRET || 'rexermi-customer-secret-2024'
 
 // Register Customer
@@ -109,21 +124,27 @@ router.get('/me', async (req, res) => {
   }
 })
 
+
 // Update Customer Profile
-router.patch('/me', async (req, res) => {
+router.patch('/me', upload.single('photoFile'), async (req, res) => {
   const authHeader = req.headers.authorization
   if (!authHeader) return res.status(401).json({ error: 'No autorizado' })
   
   const token = authHeader.split(' ')[1]
   try {
     const decoded = jwt.verify(token, JWT_SECRET)
-    const { name, phone, address } = req.body
+    const { name, phone, address, photo: photoRaw } = req.body
+    let photo = photoRaw
+    if (req.file) {
+      photo = `/uploads/customers/${req.file.filename}`
+    }
     const customer = await prisma.customer.update({
       where: { id: decoded.id },
       data: { 
         name, 
         phone, 
-        address
+        address,
+        photo
       }
     })
     const { password: _, ...customerData } = customer
@@ -134,14 +155,20 @@ router.patch('/me', async (req, res) => {
 })
 
 // Create Order (Protected via Cookie)
-router.post('/orders', async (req, res) => {
+router.post('/orders', upload.single('paymentProofFile'), async (req, res) => {
   const token = req.cookies.customer_token
   if (!token) return res.status(401).json({ error: 'No autorizado' })
   
   console.log('[CUSTOMERS] Processing new web order...')
   try {
     const decoded = jwt.verify(token, JWT_SECRET)
-    const { items, total, paymentMethod, paymentRef, paymentProof } = req.body
+    const { items: itemsRaw, total: totalRaw, paymentMethod, paymentRef, paymentProof: proofRaw } = req.body
+    const items = typeof itemsRaw === 'string' ? JSON.parse(itemsRaw) : itemsRaw
+    const total = Number(totalRaw)
+    let paymentProof = proofRaw
+    if (req.file) {
+      paymentProof = `/uploads/customers/${req.file.filename}`
+    }
     
     const order = await prisma.$transaction(async (tx) => {
       // 1. Check stock

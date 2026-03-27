@@ -1,0 +1,313 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+  output        = "../generated-client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id          String       @id @default(uuid())
+  username    String       @unique
+  password    String
+  name        String
+  role        String
+  avatar      String       @default("👨‍💼")
+  pPOS        Boolean      @default(true)
+  pInventory  Boolean      @default(false)
+  pSales      Boolean      @default(true)
+  pService    Boolean      @default(false)
+  pOrders     Boolean      @default(false)
+  pCustomers  Boolean      @default(false)
+  pSettings   Boolean      @default(false)
+  cedula      String       @default("")
+  phone       String       @default("")
+  photo       String       @default("")
+  birthday    DateTime?
+  gender      String       @default("")
+  address     String       @default("")
+  salary      Float        @default(0)
+  hiredAt     DateTime     @default(now())
+  cvData      String       @default("")
+  dataFile    String       @default("")
+  createdAt   DateTime     @default(now())
+  attendances Attendance[]
+  absences    Absence[]
+}
+
+model Attendance {
+  id       String    @id @default(uuid())
+  userId   String
+  date     String
+  checkIn  DateTime  @default(now())
+  checkOut DateTime?
+  notes    String?
+  user     User      @relation(fields: [userId], references: [id])
+}
+
+model Absence {
+  id          String  @id @default(uuid())
+  userId      String
+  date        String
+  reason      String
+  isJustified Boolean @default(false)
+  user        User    @relation(fields: [userId], references: [id])
+}
+
+model Product {
+  id             String          @id @default(uuid())
+  sku            String          @unique
+  name           String
+  description    String?
+  category       String
+  price          Float
+  cost           Float
+  stock          Int             @default(0)
+  minStock       Int             @default(5)
+  warehouse      String          @default("Principal")
+  image          String          @default("📦")
+  featured       Boolean         @default(false)
+  showInCatalog  Boolean         @default(true)
+  warrantyDays   Int             @default(30)
+  updatedAt      DateTime        @updatedAt
+  saleItems      SaleItem[]
+  movements      StockMovement[]
+  quotationItems QuotationItem[]
+  orderItems     OrderItem[]
+}
+
+model StockMovement {
+  id        String   @id @default(uuid())
+  productId String
+  quantity  Int
+  type      String
+  reason    String?
+  user      String
+  date      DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id])
+}
+
+model Sale {
+  id             String       @id @default(uuid())
+  saleNumber     String       @unique
+  subtotal       Float
+  globalDiscount Float        @default(0)
+  iva            Float
+  total          Float
+  totalBs        Float
+  paymentMethod  String
+  cashier        String
+  date           String
+  time           String
+  sessionId      String?
+  customerId     String?
+  createdAt      DateTime     @default(now())
+  paymentProof   String?
+  paymentRef     String?
+  session        CashSession? @relation(fields: [sessionId], references: [id])
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+  items          SaleItem[]
+}
+
+model CashSession {
+  id             String    @id @default(uuid())
+  openedAt       DateTime  @default(now())
+  closedAt       DateTime?
+  openingBalance Float
+  closingBalance Float?
+  cashier        String
+  status         String    @default("OPEN")
+  sales          Sale[]
+}
+
+model SaleItem {
+  id           String  @id @default(uuid())
+  saleId       String
+  productId    String
+  qty          Int
+  price        Float
+  discount     Float   @default(0)
+  warrantyDays Int     @default(0)
+  product      Product @relation(fields: [productId], references: [id])
+  sale         Sale    @relation(fields: [saleId], references: [id])
+}
+
+model ServiceTicket {
+  id           String        @id @default(uuid())
+  tkNumber     String        @unique
+  customer     String
+  phone        String
+  device       String
+  serial       String?
+  issue        String
+  diagnosis    String?
+  status       String
+  cost         Float         @default(0)
+  warranty     Boolean       @default(false)
+  warrantyDays Int           @default(0)
+  date         DateTime      @default(now())
+  parts        String?
+  notes        ServiceNote[]
+}
+
+model ServiceNote {
+  id        String        @id @default(uuid())
+  ticketId  String
+  content   String
+  author    String
+  createdAt DateTime      @default(now())
+  ticket    ServiceTicket @relation(fields: [ticketId], references: [id])
+}
+
+model Closure {
+  id             String   @id @default(uuid())
+  date           DateTime @default(now())
+  totalSales     Int
+  totalItems     Int
+  totalAmountUsd Float
+  totalAmountBs  Float
+  ivaTotal       Float
+  details        String
+  cashier        String
+}
+
+model SystemConfig {
+  id                  Int      @id @default(autoincrement())
+  storeName           String   @default("Rexermi Tech")
+  storeRIF            String   @default("J-12345678-9")
+  storeAddress        String   @default("Av. Principal, Centro Comercial Plaza, Local 12")
+  storePhone          String   @default("0414-1234567")
+  exchangeRateBCV     Float    @default(36.50)
+  exchangeRateUSDT    Float    @default(37.20)
+  ivaPercent          Float    @default(16)
+  defaultWarrantyDays Int      @default(30)
+  fidelityEnabled     Boolean  @default(false)
+  ptsPer10Usd         Float    @default(1)
+  catalogUrl          String   @default("http://localhost:5173/?catalog=true")
+  tunnelMode          String   @default("auto")
+  tunnelToken         String   @default("")
+  customDomain        String   @default("")
+  companyLogo         String   @default("")
+  // Control de Precios de Impresión (Costo base por página / Multiplicadores)
+  pPriceBond          Float    @default(0.20)
+  pPricePhoto         Float    @default(1.50)
+  pPriceGlace         Float    @default(2.00)
+  pPriceColorMult     Float    @default(2.50)
+  pPriceBWMult        Float    @default(1.00)
+  pPriceSimpleMult    Float    @default(1.00)
+  pPriceDoubleMult    Float    @default(1.80)
+  updatedAt           DateTime @updatedAt
+}
+
+model Customer {
+  id              String            @id @default(uuid())
+  email           String            @unique
+  password        String
+  name            String
+  phone           String?
+  address         String?
+  points          Float             @default(0)
+  pendingDiscount Float             @default(0)
+  createdAt       DateTime          @default(now())
+  orders          Order[]
+  sales           Sale[]
+  loyaltyHistory  LoyaltyMovement[]
+  printOrders     PrintOrder[]
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  customerId    String
+  total         Float
+  status        String      @default("PENDING")
+  createdAt     DateTime    @default(now())
+  paymentMethod String?
+  paymentProof  String?
+  paymentRef    String?
+  customer      Customer    @relation(fields: [customerId], references: [id])
+  items         OrderItem[]
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  productId String
+  qty       Int
+  price     Float
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+model Quotation {
+  id             String          @id @default(uuid())
+  number         String          @unique
+  customerName   String
+  customerEmail  String?
+  customerPhone  String?
+  subtotal       Float
+  globalDiscount Float           @default(0)
+  iva            Float
+  total          Float
+  notes          String?
+  validUntil     DateTime?
+  status         String          @default("PENDING")
+  createdAt      DateTime        @default(now())
+  items          QuotationItem[]
+}
+
+model QuotationItem {
+  id          String    @id @default(uuid())
+  quotationId String
+  productId   String
+  qty         Int
+  price       Float
+  discount    Float     @default(0)
+  quotation   Quotation @relation(fields: [quotationId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+}
+
+model LoyaltyReward {
+  id            String  @id @default(uuid())
+  name          String
+  description   String?
+  pointsCost    Int
+  isActive      Boolean @default(true)
+  type          String  @default("PRODUCT")
+  value         Float   @default(0)
+  showInCatalog Boolean @default(true)
+}
+
+model LoyaltyMovement {
+  id         String   @id @default(uuid())
+  customerId String
+  points     Float
+  type       String
+  reason     String?
+  date       DateTime @default(now())
+  customer   Customer @relation(fields: [customerId], references: [id])
+}
+
+model PrintOrder {
+  id             String    @id @default(uuid())
+  orderNumber    String    @unique
+  customerId     String?
+  customerName   String
+  customerPhone  String
+  filename       String
+  fileSize       Int
+  fileUrl        String
+  paperType      String // Bond, Fotográfico, Glace
+  colorMode      String // BW, COLOR
+  sides          String // SIMPLE, DOBLE
+  pages          Int       @default(1)
+  quantity       Int       @default(1)
+  estimatedTotal Float
+  finalTotal     Float?
+  status         String    @default("PENDING_REVIEW") // PENDING_REVIEW, READY_FOR_PAYMENT, COMPLETED, CANCELLED
+  notes          String?
+  createdAt      DateTime  @default(now())
+  customer       Customer? @relation(fields: [customerId], references: [id])
+}

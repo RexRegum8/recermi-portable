@@ -174,7 +174,11 @@ export function OrderManager() {
                 ×
               </button>
               <div className="w-full flex-1 overflow-auto flex items-center justify-center p-4">
-                <img src={showProof} className="max-w-full max-h-full object-contain rounded-xl" />
+                <img 
+                  src={showProof.startsWith('data:') ? showProof : `${getBaseUrl()}${showProof}`} 
+                  className="max-w-full max-h-full object-contain rounded-xl" 
+                  alt="Comprobante de pago"
+                />
               </div>
               <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest py-4">Comprobante de Pago Adjunto</p>
            </div>

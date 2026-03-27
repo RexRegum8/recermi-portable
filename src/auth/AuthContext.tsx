@@ -38,6 +38,13 @@ export interface SystemConfig {
   fidelityEnabled: boolean
   ptsPer10Usd: number
   defaultWarrantyDays: number
+  pPriceBond: number
+  pPricePhoto: number
+  pPriceGlace: number
+  pPriceColorMult: number
+  pPriceBWMult: number
+  pPriceSimpleMult: number
+  pPriceDoubleMult: number
 }
 
 interface AuthContextType {
@@ -45,15 +52,15 @@ interface AuthContextType {
   users: User[]
   needsSetup: boolean | null
   config: SystemConfig
-  updateConfig: (patch: Partial<SystemConfig>) => void
+  updateConfig: (patch: Partial<SystemConfig> | FormData) => void
   login: (username: string, password: string) => Promise<boolean>
   logout: () => void
   setupServer: (config: { mode: 'SERVER' | 'CLIENT', serverIp: string }) => Promise<void>
   refreshSetup: () => Promise<void>
   refreshConfig: () => Promise<void>
   refreshUsers: () => Promise<void>
-  registerUser: (userData: any) => Promise<void>
-  updateUser: (id: string, userData: any) => Promise<void>
+  registerUser: (userData: any | FormData) => Promise<void>
+  updateUser: (id: string, userData: any | FormData) => Promise<void>
   deleteUser: (id: string) => Promise<void>
   isAdmin: boolean
   isSupervisor: boolean
@@ -84,7 +91,14 @@ const DEFAULT_CONFIG: SystemConfig = {
   customDomain: '',
   fidelityEnabled: false,
   ptsPer10Usd: 1,
-  defaultWarrantyDays: 30
+  defaultWarrantyDays: 30,
+  pPriceBond: 0.20,
+  pPricePhoto: 1.50,
+  pPriceGlace: 2.00,
+  pPriceColorMult: 2.5,
+  pPriceBWMult: 1.0,
+  pPriceSimpleMult: 1.0,
+  pPriceDoubleMult: 1.8
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -198,20 +212,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user?.role === 'admin') refreshUsers()
   }, [user])
 
-  const registerUser = async (userData: any) => {
+  const registerUser = async (userData: any | FormData) => {
     const resp = await fetchWithAuth('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify(userData)
+      body: userData instanceof FormData ? userData : JSON.stringify(userData)
     })
     const data = await resp.json()
     if (data.token) localStorage.setItem('auth_token', data.token)
     await refreshUsers()
   }
 
-  const updateUser = async (id: string, userData: any) => {
+  const updateUser = async (id: string, userData: any | FormData) => {
     const resp = await fetchWithAuth(`/api/auth/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify(userData)
+      body: userData instanceof FormData ? userData : JSON.stringify(userData)
     })
     
     if (resp.ok) {
@@ -265,11 +279,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsServerReady(false) // Trigger re-check
     setNeedsSetup(null)
   }
-  const updateConfig = async (patch: Partial<SystemConfig>) => {
+  const updateConfig = async (patch: Partial<SystemConfig> | FormData) => {
     try {
       const resp = await fetchWithAuth('/api/config', {
         method: 'PATCH',
-        body: JSON.stringify(patch)
+        body: patch instanceof FormData ? patch : JSON.stringify(patch)
       })
       const data = await resp.json()
       if (data && !data.error) setConfig(data)

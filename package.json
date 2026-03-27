@@ -1,7 +1,7 @@
 {
   "name": "rexermi-os",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.1.2",
   "description": "Sistema de gestión profesional Rexermi OS",
   "author": "Rexermi",
   "type": "module",
@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && npm run backend:build",
-    "backend:build": "esbuild backend/src/index.js --bundle --platform=node --target=node18 --outfile=backend/dist/index.cjs --external:prisma --external:@prisma/client",
+    "backend:build": "esbuild backend/src/index.js --bundle --platform=node --target=node18 --outfile=backend/dist/index.cjs --external:prisma --external:@prisma/client --external:pdf-parse",
     "preview": "vite preview",
     "electron:dev": "cross-env NODE_ENV=development electron .",
     "electron:start": "wait-on http://localhost:5173 && npm run electron:dev",
@@ -27,6 +27,7 @@
       "electron/**/*",
       "backend/dist/**/*",
       "backend/prisma/**/*",
+      "backend/generated-client/**/*",
       "package.json",
       "bin/**/*",
       "node_modules/**/*"
@@ -36,7 +37,15 @@
       "dist/**/*",
       "backend/dist/**/*",
       "backend/prisma/**/*",
-      "bin/**/*"
+      "backend/generated-client/**/*",
+      "bin/**/*",
+      "node_modules/@prisma/client/**/*",
+      "node_modules/prisma/**/*",
+      "node_modules/express/**/*",
+      "node_modules/multer/**/*",
+      "node_modules/pdf-parse/**/*",
+      "node_modules/cors/**/*",
+      "node_modules/socket.io/**/*"
     ],
     "win": {
       "target": "nsis"
@@ -57,6 +66,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
+    "@types/multer": "^2.1.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "cookie-parser": "^1.4.7",
@@ -67,6 +77,8 @@
     "express": "^4.22.1",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.363.0",
+    "multer": "^2.1.1",
+    "pdf-parse": "1.1.1",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -1,6 +1,7 @@
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "windows"]
+  output        = "../generated-client"
 }
 
 datasource db {
@@ -190,6 +191,14 @@ model SystemConfig {
   tunnelToken      String   @default("")
   customDomain     String   @default("")
   companyLogo      String   @default("")
+  // Control de Precios de Impresión (Costo base por página / Multiplicadores)
+  pPriceBond       Float    @default(0.20)
+  pPricePhoto      Float    @default(1.50)
+  pPriceGlace      Float    @default(2.00)
+  pPriceColorMult  Float    @default(2.50)
+  pPriceBWMult     Float    @default(1.00)
+  pPriceSimpleMult Float    @default(1.00)
+  pPriceDoubleMult Float    @default(1.80)
   updatedAt        DateTime @updatedAt
 }
 
@@ -206,6 +215,7 @@ model Customer {
   orders          Order[]
   sales           Sale[]
   loyaltyHistory  LoyaltyMovement[]
+  printOrders     PrintOrder[]
 }
 
 model Order {
@@ -278,4 +288,26 @@ model LoyaltyMovement {
   reason     String?
   date       DateTime @default(now())
   customer   Customer @relation(fields: [customerId], references: [id])
+}
+
+model PrintOrder {
+  id             String   @id @default(uuid())
+  orderNumber    String   @unique
+  customerId     String?
+  customerName   String
+  customerPhone  String
+  filename       String
+  fileSize       Int
+  fileUrl        String
+  paperType      String   // Bond, Fotográfico, Glace
+  colorMode      String   // BW, COLOR
+  sides          String   // SIMPLE, DOBLE
+  pages          Int      @default(1)
+  quantity       Int      @default(1)
+  estimatedTotal Float
+  finalTotal     Float?
+  status         String   @default("PENDING_REVIEW") // PENDING_REVIEW, READY_FOR_PAYMENT, COMPLETED, CANCELLED
+  notes          String?
+  createdAt      DateTime @default(now())
+  customer       Customer? @relation(fields: [customerId], references: [id])
 }

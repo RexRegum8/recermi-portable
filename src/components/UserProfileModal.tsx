@@ -18,6 +18,8 @@ export function UserProfileModal({ user, onClose, onSave, readOnly = false }: Us
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
   const [newAbsence, setNewAbsence] = useState({ date: new Date().toISOString().split('T')[0], reason: '', isJustified: false })
+  const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null)
+  const [selectedDoc, setSelectedDoc] = useState<File | null>(null)
 
   const fetchFullDetails = async () => {
     try {
@@ -48,6 +50,10 @@ export function UserProfileModal({ user, onClose, onSave, readOnly = false }: Us
       alert('El archivo es demasiado grande (máx 10MB)')
       return
     }
+    
+    if (type === 'photo') setSelectedPhoto(file)
+    else setSelectedDoc(file)
+
     const reader = new FileReader()
     reader.onload = (event) => {
       const base64 = event.target?.result as string
@@ -59,7 +65,19 @@ export function UserProfileModal({ user, onClose, onSave, readOnly = false }: Us
   const handleSave = async () => {
     setLoading(true)
     try {
-      await onSave(formData)
+      const formDataToSend = new FormData()
+      Object.entries(formData).forEach(([key, val]) => {
+         if (val !== undefined && key !== 'photo' && key !== 'dataFile') {
+           formDataToSend.append(key, typeof val === 'object' ? JSON.stringify(val) : String(val))
+         }
+      })
+      if (selectedPhoto) formDataToSend.append('photoFile', selectedPhoto)
+      else if (formData.photo) formDataToSend.append('photo', formData.photo)
+
+      if (selectedDoc) formDataToSend.append('dataFileFile', selectedDoc)
+      else if (formData.dataFile) formDataToSend.append('dataFile', formData.dataFile)
+
+      await onSave(formDataToSend)
       onClose()
     } catch (e) {
       alert('Error al guardar cambios')
@@ -133,7 +151,9 @@ export function UserProfileModal({ user, onClose, onSave, readOnly = false }: Us
           {/* Avatar & Side Info */}
           <div className="w-full md:w-48 flex flex-col items-center flex-shrink-0">
             <div className="w-32 h-32 sm:w-40 sm:h-40 bg-slate-100 rounded-[2.5rem] flex items-center justify-center text-6xl shadow-inner mb-6 relative group overflow-hidden border-4 border-white ring-1 ring-slate-100">
-              {formData.photo ? <img src={formData.photo} className="w-full h-full object-cover" /> : formData.avatar}
+              {formData.photo?.startsWith('data:image') ? <img src={formData.photo} className="w-full h-full object-cover" /> : 
+               formData.photo?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${formData.photo}`} className="w-full h-full object-cover" /> :
+               formData.avatar}
               {!readOnly && (
                 <button 
                   onClick={() => photoInputRef.current?.click()}
@@ -227,7 +247,8 @@ export function UserProfileModal({ user, onClose, onSave, readOnly = false }: Us
                     {formData.dataFile && (
                       <button onClick={() => {
                         const win = window.open()
-                        win?.document.write(`<iframe src="${formData.dataFile}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`)
+                        const docUrl = formData.dataFile?.startsWith('/uploads') ? `${getBaseUrl()}${formData.dataFile}` : formData.dataFile;
+                        win?.document.write(`<iframe src="${docUrl}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`)
                       }} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-widest py-3 rounded-xl transition-all flex items-center justify-center gap-2">
                         <span>👁️ VER DOCUMENTO</span>
                       </button>

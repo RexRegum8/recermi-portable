@@ -16,14 +16,15 @@ export const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
   const token = localStorage.getItem('auth_token') || localStorage.getItem('customerToken')
   const authHeader = token ? { 'Authorization': `Bearer ${token}` } : {}
 
+  const headers: any = { ...authHeader, ...options.headers }
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json'
+  }
+
   return fetch(fullUrl, {
     ...options,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeader,
-      ...options.headers,
-    }
+    headers
   })
 }
 

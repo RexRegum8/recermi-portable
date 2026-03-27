@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { QRCodeSVG } from 'qrcode.react'
 import { useProductStore, Product } from '../store/ProductStore'
@@ -16,6 +16,7 @@ export function InventoryManager() {
   const [showNewReward, setShowNewReward] = useState(false)
   const [showQR, setShowQR] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<Partial<Product>>({})
   
   const [history, setHistory] = useState<any[]>([])
   const [allMovements, setAllMovements] = useState<any[]>([])
@@ -26,6 +27,7 @@ export function InventoryManager() {
   const [np, setNp] = useState(''); const [nco, setNco] = useState(''); const [nst, setNst] = useState(''); const [nm, setNm] = useState('5')
   const [nw, setNw] = useState('Principal'); const [ngx, setNgx] = useState('30'); const [ni, setNi] = useState('')
   const [nd, setNd] = useState('')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
 
   // Movement Form
   const [ms, setMs] = useState(''); const [mq, setMq] = useState(''); const [mt, setMt] = useState<'IN' | 'OUT' | 'ADJUSTMENT'>('IN'); const [mr, setMr] = useState('')
@@ -46,29 +48,41 @@ export function InventoryManager() {
     }
   }, [activeView])
 
-  const categories = ['TODOS', ...Array.from(new Set(products.map(p => p.category)))]
+  const categories = useMemo(() => ['TODOS', ...Array.from(new Set(products.map(p => p.category)))], [products])
 
-  const filtered = products.filter((p) => {
+  const filtered = useMemo(() => products.filter((p) => {
     const matchesFilter = p.sku?.toLowerCase().includes(filter.toLowerCase()) || p.name?.toLowerCase().includes(filter.toLowerCase())
     const matchesCategory = selectedCategory === 'TODOS' || p.category === selectedCategory
     return matchesFilter && matchesCategory
-  })
+  }), [products, filter, selectedCategory])
 
-  const lowStock = products.filter(p => p.stock <= p.minStock)
+  const lowStock = useMemo(() => products.filter(p => p.stock <= p.minStock), [products])
 
   const handleCreateProduct = async () => {
     if (!ns || !nn || !np) return
     console.log(`[FRONTEND-INVT] Attempting to create product: ${nn} (SKU: ${ns})`)
     try {
-      await createProduct({ 
-        sku: ns.toUpperCase(), name: nn, category: nc, description: nd,
-        stock: Number(nst) || 0, minStock: Number(nm) || 5, 
-        price: Number(np) || 0, cost: Number(nco) || 0, warehouse: nw,
-        warrantyDays: Number(ngx) || 30,
-        image: ni || '📦'
-      })
+      const formData = new FormData()
+      formData.append('sku', ns.toUpperCase())
+      formData.append('name', nn)
+      formData.append('category', nc)
+      formData.append('description', nd)
+      formData.append('stock', nst || '0')
+      formData.append('minStock', nm || '5')
+      formData.append('price', np || '0')
+      formData.append('cost', nco || '0')
+      formData.append('warehouse', nw)
+      formData.append('warrantyDays', ngx || '30')
+      
+      if (selectedFile) {
+        formData.append('imageFile', selectedFile)
+      } else {
+        formData.append('image', ni || '📦')
+      }
+
+      await createProduct(formData)
       console.log('[FRONTEND-INVT] Product created successfully')
-      setNs(''); setNn(''); setNp(''); setNco(''); setNst(''); setNi(''); setNd(''); setShowNew(false)
+      setNs(''); setNn(''); setNp(''); setNco(''); setNst(''); setNi(''); setNd(''); setSelectedFile(null); setShowNew(false)
     } catch (e: any) {
       console.error(`[FRONTEND-INVT] Error creating product: ${e.message}`)
     }
@@ -77,6 +91,7 @@ export function InventoryManager() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      setSelectedFile(file)
       const reader = new FileReader()
       reader.onloadend = () => setNi(reader.result as string)
       reader.readAsDataURL(file)
@@ -120,6 +135,36 @@ export function InventoryManager() {
       const data = await res.json()
       setHistory(data)
       setSelectedHistory(p)
+    } catch (e) { console.error(e) }
+  }
+
+  const { deleteProduct } = useProductStore()
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return
+    try {
+      const formData = new FormData()
+      Object.entries(editForm).forEach(([key, val]) => {
+        if (val !== undefined && key !== 'image') formData.append(key, val.toString())
+      })
+      
+      if (selectedFile) {
+        formData.append('imageFile', selectedFile)
+      } else if (editForm.image) {
+        formData.append('image', editForm.image)
+      }
+
+      await updateProduct(editingId, formData)
+      setEditingId(null)
+      setEditForm({})
+      setSelectedFile(null)
+    } catch (e) { console.error(e) }
+  }
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar este producto? Se borrará todo su historial.')) return
+    try {
+      await deleteProduct(id)
     } catch (e) { console.error(e) }
   }
 
@@ -177,33 +222,45 @@ export function InventoryManager() {
                  {filtered.map(p => {
                     const editing = editingId === p.id
                     return (
-                      <tr key={p.id} className="hover:bg-blue-600/5 group transition-colors">
-                        <td className="px-6 py-4">
-                           <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden border border-slate-700">
-                                 {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-cover" /> : <span className="text-lg">{p.image || '📦'}</span>}
-                              </div>
-                              {editing ? <input value={p.name} onChange={e => updateProduct(p.id, { name: e.target.value })} className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs outline-none" /> :
-                              <div><p className="font-bold text-sm">{p.name}</p><p className="text-[9px] text-blue-500 font-mono uppercase">{p.sku}</p></div>}
-                           </div>
-                        </td>
-                        <td className="px-6 py-4 text-xs font-bold text-slate-500">{p.warehouse}</td>
-                        <td className="px-6 py-4 text-center">
-                           <span className={`text-sm font-black font-mono ${p.stock <= p.minStock ? 'text-red-400 animate-pulse' : 'text-slate-100'}`}>{p.stock}</span>
-                           <span className="text-[9px] text-slate-600 ml-1">min:{p.minStock}</span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                           {editing ? <input type="number" value={p.warrantyDays} onChange={e => updateProduct(p.id, { warrantyDays: Number(e.target.value) })} className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs w-16 text-center outline-none" /> :
-                           <span className="bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-black border border-slate-700">{p.warrantyDays || 30} d</span>}
-                        </td>
-                        <td className="px-6 py-4 text-right font-black font-mono text-green-400">${p.price.toFixed(2)}</td>
-                        <td className="px-6 py-4 text-right">
-                           <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => setShowQR(p.sku)} className="p-2 text-slate-500 hover:text-white">📱</button>
-                              <button onClick={() => fetchHistory(p)} className="p-2 text-slate-500 hover:text-blue-400">📜</button>
-                              <button onClick={() => setEditingId(editing ? null : p.id)} className={`px-3 py-1 rounded-lg text-[10px] font-black ${editing ? 'bg-green-600 text-white' : 'bg-slate-800 text-slate-400'}`}>{editing ? 'GUARDAR' : 'EDITAR'}</button>
-                           </div>
-                        </td>
+                      <tr key={p.id} className="hover:bg-blue-600/5 group">
+                         <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden border border-slate-700">
+                                   {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-cover" /> : 
+                                    p.image?.startsWith('/uploads') ? <img src={`${getBaseUrl()}${p.image}`} className="w-full h-full object-cover" /> :
+                                    <span className="text-lg">{p.image || '📦'}</span>}
+                                </div>
+                               {editing ? <input value={editForm.name ?? p.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs outline-none" /> :
+                               <div><p className="font-bold text-sm">{p.name}</p><p className="text-[9px] text-blue-500 font-mono uppercase">{p.sku}</p></div>}
+                            </div>
+                         </td>
+                         <td className="px-6 py-4 text-xs font-bold text-slate-500">{p.warehouse}</td>
+                         <td className="px-6 py-4 text-center">
+                            <span className={`text-sm font-black font-mono ${p.stock <= p.minStock ? 'text-red-400 animate-pulse' : 'text-slate-100'}`}>{editing ? <input type="number" value={editForm.stock ?? p.stock} onChange={e => setEditForm({...editForm, stock: Number(e.target.value)})} className="w-16 bg-slate-800 rounded border border-slate-700 text-center" /> : p.stock}</span>
+                            {!editing && <span className="text-[9px] text-slate-600 ml-1">min:{p.minStock}</span>}
+                         </td>
+                         <td className="px-6 py-4 text-center">
+                            {editing ? <input type="number" value={editForm.warrantyDays ?? p.warrantyDays} onChange={e => setEditForm({ ...editForm, warrantyDays: Number(e.target.value) })} className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs w-16 text-center outline-none" /> :
+                            <span className="bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-black border border-slate-700">{p.warrantyDays || 30} d</span>}
+                         </td>
+                         <td className="px-6 py-4 text-right font-black font-mono text-green-400">
+                            {editing ? <input type="number" value={editForm.price ?? p.price} onChange={e => setEditForm({...editForm, price: Number(e.target.value)})} className="w-20 bg-slate-800 rounded border border-slate-700 text-right" /> : `$${p.price.toFixed(2)}`}
+                         </td>
+                         <td className="px-6 py-4 text-right">
+                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                               <button onClick={() => setShowQR(p.sku)} className="p-2 text-slate-500 hover:text-white">📱</button>
+                               <button onClick={() => fetchHistory(p)} className="p-2 text-slate-500 hover:text-blue-400">📜</button>
+                               <button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-slate-600 hover:text-red-500 transition-all">🗑️</button>
+                               <button onClick={() => {
+                                 if (editing) {
+                                   handleSaveEdit()
+                                 } else {
+                                   setEditingId(p.id)
+                                   setEditForm(p)
+                                 }
+                               }} className={`px-3 py-1 rounded-lg text-[10px] font-black ${editing ? 'bg-green-600 text-white' : 'bg-slate-800 text-slate-400'}`}>{editing ? 'GUARDAR' : 'EDITAR'}</button>
+                            </div>
+                         </td>
                       </tr>
                     )
                  })}

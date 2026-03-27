@@ -1,5 +1,6 @@
 import { useSales, CashSession, SaleRecord } from '../store/SalesContext'
 import { useAuth } from '../auth/AuthContext'
+import { getBaseUrl } from '../utils/api'
 import { useState, useEffect } from 'react'
 
 export function SalesHistory() {
@@ -227,7 +228,11 @@ export function SalesHistory() {
                               <span className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] font-bold">{s.paymentMethod}</span>
                               {s.paymentProof && (
                                 <button onClick={() => setViewProof(s.paymentProof!)} className="hover:scale-110 transition-transform">
-                                   <img src={s.paymentProof} className="w-6 h-6 rounded object-cover border border-slate-700 hover:border-blue-500" />
+                                   <img 
+                                     src={s.paymentProof.startsWith('data:') ? s.paymentProof : `${getBaseUrl()}${s.paymentProof}`} 
+                                     className="w-6 h-6 rounded object-cover border border-slate-700 hover:border-blue-500" 
+                                     alt="Comprobante"
+                                   />
                                 </button>
                               )}
                            </div>
@@ -310,9 +315,13 @@ export function SalesHistory() {
               >
                 <span>Cerrar</span> <span className="text-2xl">✕</span>
               </button>
-              <div className="bg-white p-2 rounded-3xl shadow-2xl overflow-hidden ring-4 ring-white/10">
-                <img src={viewProof} className="max-h-[85vh] object-contain rounded-2xl" />
-              </div>
+               <div className="bg-white p-2 rounded-3xl shadow-2xl overflow-hidden ring-4 ring-white/10">
+                 <img 
+                   src={viewProof.startsWith('data:') ? viewProof : `${getBaseUrl()}${viewProof}`} 
+                   className="max-h-[85vh] object-contain rounded-2xl" 
+                   alt="Comprobante completo"
+                 />
+               </div>
               <p className="mt-4 text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Comprobante de Pago Guardado</p>
            </div>
         </div>

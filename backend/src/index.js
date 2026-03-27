@@ -20,6 +20,7 @@ import sessionsRoutes from './routes/sessions.js'
 import quotationRoutes from './routes/quotations.js'
 import loyaltyRoutes from './routes/loyalty.js'
 import setupRoutes from './routes/setup.js'
+import printRoutes from './routes/prints.js'
 
 const app = express()
 const server = http.createServer(app)
@@ -56,13 +57,19 @@ app.use('/api/sessions', sessionsRoutes)
 app.use('/api/quotations', quotationRoutes)
 app.use('/api/loyalty', loyaltyRoutes)
 app.use('/api/setup', setupRoutes)
+app.use('/api/prints', printRoutes)
 
-// Serve Catalog (Static Files)
+// Static Files
 const distPath = fs.existsSync(path.join(process.cwd(), 'dist', 'index.html')) 
   ? path.join(process.cwd(), 'dist')
   : path.join(process.cwd(), '..', 'dist');
 
+const uploadsPath = path.join(process.cwd(), 'backend', 'src', 'uploads');
+
 console.log(`[BACKEND] Serving static files from: ${distPath}`);
+console.log(`[BACKEND] Serving uploads from: ${uploadsPath}`);
+
+app.use('/uploads', express.static(uploadsPath))
 app.use(express.static(distPath))
 
 // Health check

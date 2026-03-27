@@ -1,9 +1,26 @@
 import express from 'express'
 import jwt from 'jsonwebtoken'
+import multer from 'multer'
+import path from 'path'
+import fs from 'fs'
 import { prisma } from '../db.js'
 import { authenticate, ipFilter } from '../middleware/auth.js'
 
 const router = express.Router()
+
+// Multer Config
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = 'backend/src/uploads/system'
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    cb(null, dir)
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, 'logo-' + uniqueSuffix + path.extname(file.originalname))
+  }
+})
+const upload = multer({ storage })
 
 // Fetch official BCV rate
 router.get('/fetch-bcv', async (req, res) => {
@@ -77,29 +94,71 @@ router.get('/', async (req, res) => {
   }
 })
 
-// Update system config
-router.patch('/', async (req, res, next) => {
+// Conditional authentication: bypass if no users exist (initial setup)
+async function conditionalAuth(req, res, next) {
   try {
     const count = await prisma.user.count()
     if (count === 0) return next()
-    authenticate(req, res, next)
+    return authenticate(req, res, next)
   } catch (e) {
-    authenticate(req, res, next)
+    return authenticate(req, res, next)
   }
-}, ipFilter, async (req, res) => {
-  console.log('[CONFIG] Updating system configuration...')
+}
+
+// Update system config
+router.patch('/', upload.single('logoFile'), conditionalAuth, async (req, res) => {
+  const { 
+    storeName, storeRIF, storeAddress, storePhone, exchangeRateBCV, exchangeRateUSDT, ivaPercent, 
+    defaultWarrantyDays, fidelityEnabled, ptsPer10Usd, catalogUrl, tunnelMode, tunnelToken, 
+    customDomain, companyLogo,
+    pPriceBond, pPricePhoto, pPriceGlace, pPriceColorMult, pPriceBWMult, pPriceSimpleMult, pPriceDoubleMult
+  } = req.body
+  
   try {
+    const data = {}
+    if (storeName) data.storeName = storeName
+    if (storeRIF) data.storeRIF = storeRIF
+    if (storeAddress) data.storeAddress = storeAddress
+    if (storePhone) data.storePhone = storePhone
+    if (exchangeRateBCV !== undefined) data.exchangeRateBCV = Number(exchangeRateBCV)
+    if (exchangeRateUSDT !== undefined) data.exchangeRateUSDT = Number(exchangeRateUSDT)
+    if (ivaPercent !== undefined) data.ivaPercent = Number(ivaPercent)
+    if (defaultWarrantyDays !== undefined) data.defaultWarrantyDays = Number(defaultWarrantyDays)
+    if (fidelityEnabled !== undefined) data.fidelityEnabled = !!fidelityEnabled
+    if (ptsPer10Usd !== undefined) data.ptsPer10Usd = Number(ptsPer10Usd)
+    if (catalogUrl) data.catalogUrl = catalogUrl
+    if (tunnelMode) data.tunnelMode = tunnelMode
+    if (tunnelToken !== undefined) data.tunnelToken = tunnelToken
+    if (customDomain !== undefined) data.customDomain = customDomain
+
+    // Precios de Impresión
+    if (pPriceBond !== undefined) data.pPriceBond = Number(pPriceBond)
+    if (pPricePhoto !== undefined) data.pPricePhoto = Number(pPricePhoto)
+    if (pPriceGlace !== undefined) data.pPriceGlace = Number(pPriceGlace)
+    if (pPriceColorMult !== undefined) data.pPriceColorMult = Number(pPriceColorMult)
+    if (pPriceBWMult !== undefined) data.pPriceBWMult = Number(pPriceBWMult)
+    if (pPriceSimpleMult !== undefined) data.pPriceSimpleMult = Number(pPriceSimpleMult)
+    if (pPriceDoubleMult !== undefined) data.pPriceDoubleMult = Number(pPriceDoubleMult)
+
+    if (req.file) {
+      data.companyLogo = `/uploads/system/${req.file.filename}`
+    } else if (companyLogo !== undefined) {
+      data.companyLogo = companyLogo
+    }
+
     const config = await prisma.systemConfig.update({
       where: { id: 1 },
-      data: req.body
+      data
     })
     console.log('[CONFIG] System configuration updated successfully')
     res.json(config)
   } catch (e) {
     console.error(`[CONFIG] Error updating configuration: ${e.message}`)
-    console.error('[BACKEND-ERR] Error en PATCH /api/config:', e)
     res.status(400).json({ error: 'Error al actualizar configuración' })
   }
 })
+
+// Keep existing GET / and fetch routes...
+function dummy() {}
 
 export default router
