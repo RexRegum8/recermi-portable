@@ -8,8 +8,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'rexermi-customer-secret-2024'
 
 // Register Customer
 router.post('/register', async (req, res) => {
+  const { email, name } = req.body
+  console.log(`[CUSTOMERS] Registering new customer: ${name} (${email})`)
   try {
-    const { email, password, name, phone, address, ci, photo, birthday, gender, isCompany, isSpecialTaxpayer } = req.body
+    const { email, password, name, phone, address } = req.body
     const hashedPassword = await bcrypt.hash(password, 10)
     const customer = await prisma.customer.create({
       data: { 
@@ -18,18 +20,21 @@ router.post('/register', async (req, res) => {
         name, 
         phone, 
         address, 
-        ci, 
-        photo, 
-        birthday: birthday ? new Date(birthday) : null,
-        gender,
-        isCompany: !!isCompany,
-        isSpecialTaxpayer: !!isSpecialTaxpayer,
         points: 0 
       }
     })
+    const token = jwt.sign({ id: customer.id, email: customer.email, type: 'customer' }, JWT_SECRET, { expiresIn: '30d' })
+    res.cookie('customer_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    })
     const { password: _, ...customerData } = customer
-    res.status(201).json(customerData)
+    console.log(`[CUSTOMERS] Customer registered successfully: ${customer.id}`)
+    res.status(201).json({ customer: customerData, token })
   } catch (e) {
+    console.error(`[CUSTOMERS] Registration error for ${email}: ${e.message}`)
     res.status(400).json({ error: 'Email ya registrado o datos inválidos' })
   }
 })
@@ -37,28 +42,55 @@ router.post('/register', async (req, res) => {
 // Login Customer
 router.post('/login', async (req, res) => {
   const { email, password } = req.body
+  console.log(`[CUSTOMERS] Login attempt for customer: ${email}`)
   try {
     const customer = await prisma.customer.findUnique({ where: { email } })
-    if (!customer) return res.status(401).json({ error: 'Cliente no encontrado' })
+    if (!customer) {
+      console.warn(`[CUSTOMERS] Login failed: Customer ${email} not found`)
+      return res.status(401).json({ error: 'Cliente no encontrado' })
+    }
 
     const valid = await bcrypt.compare(password, customer.password)
-    if (!valid) return res.status(401).json({ error: 'Contraseña incorrecta' })
+    if (!valid) {
+      console.warn(`[CUSTOMERS] Login failed: Incorrect password for customer ${email}`)
+      return res.status(401).json({ error: 'Contraseña incorrecta' })
+    }
 
     const token = jwt.sign({ id: customer.id, email: customer.email, type: 'customer' }, JWT_SECRET, { expiresIn: '30d' })
     
+    // Set httpOnly cookie for customer
+    res.cookie('customer_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    })
+
     const { password: _, ...customerData } = customer
+    console.log(`[CUSTOMERS] Login successful for customer: ${email}`)
     res.json({ customer: customerData, token })
   } catch (e) {
+    console.error(`[CUSTOMERS] Login error for customer ${email}: ${e.message}`)
     res.status(500).json({ error: 'Error en el servidor' })
   }
 })
 
-// Get Customer Profile (Protected)
+router.post('/logout', (req, res) => {
+  console.log('[CUSTOMERS] Logging out customer...')
+  res.clearCookie('customer_token')
+  res.json({ message: 'Sesión cerrada' })
+})
+
+// Get Customer Profile (Protected via Cookie or Header)
 router.get('/me', async (req, res) => {
-  const authHeader = req.headers.authorization
-  if (!authHeader) return res.status(401).json({ error: 'No autorizado' })
+  let token = req.cookies.customer_token
   
-  const token = authHeader.split(' ')[1]
+  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1]
+  }
+
+  if (!token) return res.status(401).json({ error: 'No autorizado' })
+  
   try {
     const decoded = jwt.verify(token, JWT_SECRET)
     const customer = await prisma.customer.findUnique({ 
@@ -66,10 +98,10 @@ router.get('/me', async (req, res) => {
       include: { 
         orders: { include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } },
         sales: { include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } },
-        tickets: { orderBy: { date: 'desc' } },
-        loyaltyMovements: { orderBy: { createdAt: 'desc' }, take: 20 }
+        loyaltyHistory: { orderBy: { date: 'desc' }, take: 20 }
       }
     })
+    if (!customer) return res.status(404).json({ error: 'Cliente no encontrado' })
     const { password: _, ...customerData } = customer
     res.json(customerData)
   } catch (e) {
@@ -85,19 +117,13 @@ router.patch('/me', async (req, res) => {
   const token = authHeader.split(' ')[1]
   try {
     const decoded = jwt.verify(token, JWT_SECRET)
-    const { name, phone, address, ci, photo, birthday, gender, isCompany, isSpecialTaxpayer } = req.body
+    const { name, phone, address } = req.body
     const customer = await prisma.customer.update({
       where: { id: decoded.id },
       data: { 
         name, 
         phone, 
-        address, 
-        ci, 
-        photo,
-        birthday: birthday ? new Date(birthday) : null,
-        gender,
-        isCompany: isCompany !== undefined ? !!isCompany : undefined,
-        isSpecialTaxpayer: isSpecialTaxpayer !== undefined ? !!isSpecialTaxpayer : undefined
+        address
       }
     })
     const { password: _, ...customerData } = customer
@@ -107,12 +133,12 @@ router.patch('/me', async (req, res) => {
   }
 })
 
-// Create Order (Protected)
+// Create Order (Protected via Cookie)
 router.post('/orders', async (req, res) => {
-  const authHeader = req.headers.authorization
-  if (!authHeader) return res.status(401).json({ error: 'No autorizado' })
+  const token = req.cookies.customer_token
+  if (!token) return res.status(401).json({ error: 'No autorizado' })
   
-  const token = authHeader.split(' ')[1]
+  console.log('[CUSTOMERS] Processing new web order...')
   try {
     const decoded = jwt.verify(token, JWT_SECRET)
     const { items, total, paymentMethod, paymentRef, paymentProof } = req.body
@@ -122,6 +148,7 @@ router.post('/orders', async (req, res) => {
       for (const it of items) {
         const product = await tx.product.findUnique({ where: { id: it.productId } })
         if (!product || product.stock < it.qty) {
+          console.warn(`[CUSTOMERS] Order failed: Insufficient stock for ${product?.name || it.productId}`)
           throw new Error(`Stock insuficiente para: ${product?.name || it.productId}`)
         }
       }
@@ -192,9 +219,10 @@ router.post('/orders', async (req, res) => {
       return newOrder
     })
 
+    console.log(`[CUSTOMERS] Web order processed successfully: ${order.id}`)
     res.status(201).json(order)
   } catch (e) {
-    console.error(e)
+    console.error(`[CUSTOMERS] Error processing web order: ${e.message}`)
     res.status(400).json({ error: e.message || 'Error al procesar el pedido o stock insuficiente' })
   }
 })
@@ -207,7 +235,7 @@ router.get('/orders-admin', async (req, res) => {
         customer: {
           select: { id: true, name: true, email: true, phone: true }
         }, 
-        items: { include: { product: true } } 
+        items: { include: { product: false } } 
       },
       orderBy: { createdAt: 'desc' }
     })
@@ -276,6 +304,7 @@ router.patch('/orders/:id/status', async (req, res) => {
             date: now.toISOString().split('T')[0],
             time: now.toTimeString().split(' ')[0],
             sessionId: activeSession.id,
+            customerId: currentOrder.customerId,
             items: {
               create: currentOrder.items.map(it => ({
                 productId: it.productId,
@@ -319,16 +348,10 @@ router.get('/', async (req, res) => {
         id: true,
         email: true,
         name: true,
-        ci: true,
         phone: true,
         address: true,
         points: true,
         pendingDiscount: true,
-        photo: true,
-        birthday: true,
-        gender: true,
-        isCompany: true,
-        isSpecialTaxpayer: true,
         createdAt: true,
         _count: { select: { orders: true, sales: true } }
       },
@@ -336,6 +359,7 @@ router.get('/', async (req, res) => {
     })
     res.json(customers)
   } catch (e) {
+    console.error('[BACKEND-ERR] Error en GET /api/customers:', e)
     res.status(500).json({ error: 'Error al obtener clientes' })
   }
 })
@@ -348,8 +372,7 @@ router.get('/:id', async (req, res) => {
       include: {
         orders: { include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } },
         sales: { include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } },
-        tickets: { orderBy: { date: 'desc' } },
-        loyaltyMovements: { orderBy: { createdAt: 'desc' }, take: 20 }
+        loyaltyHistory: { orderBy: { date: 'desc' }, take: 20 }
       }
     })
     if (!customer) return res.status(404).json({ error: 'No encontrado' })
@@ -357,13 +380,14 @@ router.get('/:id', async (req, res) => {
     const { password: _, ...customerData } = customer
     res.json(customerData)
   } catch (e) {
-    res.status(500).json({ error: 'Error al obtener detalles' })
+    console.error('[BACKEND-ERR] Error en GET /api/customers/:id:', e)
+    res.status(500).json({ error: 'Error al cargar detalles del cliente' })
   }
 })
 
 // ADMIN: Update customer full profile
 router.patch('/:id/admin-update', async (req, res) => {
-  const { name, email, phone, address, ci, photo, birthday, gender, isCompany, isSpecialTaxpayer, points } = req.body
+  const { name, email, phone, address, points } = req.body
   try {
     const oldCustomer = await prisma.customer.findUnique({ where: { id: req.params.id } })
     const customer = await prisma.customer.update({
@@ -373,12 +397,6 @@ router.patch('/:id/admin-update', async (req, res) => {
         email,
         phone, 
         address, 
-        ci, 
-        photo,
-        birthday: birthday ? new Date(birthday) : null,
-        gender,
-        isCompany: isCompany !== undefined ? !!isCompany : undefined,
-        isSpecialTaxpayer: isSpecialTaxpayer !== undefined ? !!isSpecialTaxpayer : undefined,
         points: points !== undefined ? Number(points) : undefined
       }
     })

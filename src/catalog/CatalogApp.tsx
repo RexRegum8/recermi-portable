@@ -21,8 +21,13 @@ export function CatalogApp() {
       <nav className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-xl border-b border-slate-800 shadow-xl">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <button onClick={() => { setPage('home'); setCategoryFilter('all') }} className="flex items-center gap-2 group">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center font-bold text-sm shadow-lg group-hover:shadow-blue-500/20 transition-all">R</div>
-            <span className="font-bold text-sm">{config.storeName} <span className="text-blue-400">Digital</span></span>
+            <div className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center font-bold text-sm shadow-lg overflow-hidden border border-slate-700 group-hover:border-blue-500/50 transition-all">
+              {config.companyLogo ? <img src={config.companyLogo} className="w-full h-full object-contain" /> : 'R'}
+            </div>
+            <div className="flex flex-col items-start leading-none">
+              <span className="font-black text-sm tracking-tighter">{config.storeName}</span>
+              <span className="text-[9px] text-blue-400 font-bold uppercase tracking-widest">Tienda Digital</span>
+            </div>
           </button>
 
           <div className="flex items-center gap-3">
@@ -50,7 +55,7 @@ export function CatalogApp() {
       </nav>
 
       <main className="max-w-6xl mx-auto px-4 py-6">
-        {page === 'home' && <CatalogHome openProduct={openProduct} categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter} />}
+        {page === 'home' && <CatalogHome openProduct={openProduct} categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter} config={config} />}
         {page === 'product' && <ProductDetail id={selectedProductId} goBack={() => setPage('home')} goCart={() => setPage('cart')} />}
         {page === 'cart' && <CartPage goCheckout={() => customer ? setPage('checkout') : setPage('login')} goHome={() => setPage('home')} />}
         {page === 'checkout' && <CheckoutPage goOrders={() => setPage('orders')} goHome={() => setPage('home')} />}
@@ -94,10 +99,11 @@ export function CatalogApp() {
 }
 
 /* ==================== CATALOG HOME ==================== */
-function CatalogHome({ openProduct, categoryFilter, setCategoryFilter }: { openProduct: (id: string) => void; categoryFilter: string; setCategoryFilter: (c: string) => void }) {
+function CatalogHome({ openProduct, categoryFilter, setCategoryFilter, config }: { openProduct: (id: string) => void; categoryFilter: string; setCategoryFilter: (c: string) => void; config: any }) {
   const { products, categories } = useProductStore()
   const { addToCart } = useCustomer()
   const [search, setSearch] = useState('')
+  const [quickView, setQuickView] = useState<any | null>(null)
 
   const filtered = products
     .filter((p) => p.stock > 0 && p.showInCatalog)
@@ -108,13 +114,22 @@ function CatalogHome({ openProduct, categoryFilter, setCategoryFilter }: { openP
   return (
     <div>
       {/* Hero */}
-      <div className="bg-gradient-to-br from-blue-600/15 to-indigo-600/10 rounded-2xl p-8 mb-8 border border-blue-500/15 relative overflow-hidden">
+      <div className="bg-gradient-to-br from-blue-600/15 to-indigo-600/10 rounded-3xl p-8 mb-8 border border-blue-500/15 relative overflow-hidden flex flex-col md:flex-row items-center gap-8">
         <div className="absolute -top-10 -right-10 w-40 h-40 bg-blue-500/5 rounded-full blur-2xl" />
-        <h1 className="text-2xl font-black tracking-tight relative">Tecnología al mejor precio 🚀</h1>
-        <p className="text-slate-400 text-sm mt-1.5 max-w-md relative">Repuestos, accesorios y componentes de tecnología. Servicio técnico profesional con garantía.</p>
-        <div className="mt-4 relative">
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 Buscar productos, accesorios, repuestos..."
-            className="w-full max-w-md bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none placeholder-slate-500" />
+        
+        {config.companyLogo && (
+          <div className="w-32 h-32 bg-slate-900/50 rounded-[2.5rem] border border-blue-500/20 p-6 flex items-center justify-center shadow-2xl relative z-10 shrink-0">
+            <img src={config.companyLogo} className="w-full h-full object-contain" />
+          </div>
+        )}
+        
+        <div className="relative z-10 text-center md:text-left flex-1">
+          <h1 className="text-3xl font-black tracking-tighter">Bienvenido a {config.storeName} 🚀</h1>
+          <p className="text-slate-400 text-sm mt-2 max-w-md leading-relaxed">{config.storeAddress || 'Tecnología, repuestos y servicio técnico profesional con garantía.'}</p>
+          <div className="mt-6">
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`Buscar en ${config.storeName}...`}
+              className="w-full max-w-md bg-slate-950/80 border border-slate-800 rounded-2xl px-6 py-3.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none placeholder-slate-600 shadow-2xl" />
+          </div>
         </div>
       </div>
 
@@ -126,7 +141,9 @@ function CatalogHome({ openProduct, categoryFilter, setCategoryFilter }: { openP
             {featured.slice(0, 4).map((p) => (
               <button key={p.id} onClick={() => openProduct(p.id)}
                 className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border border-slate-700/50 rounded-xl p-4 text-left hover:border-blue-500/30 hover:shadow-lg hover:shadow-blue-500/5 transition-all group">
-                <div className="text-3xl mb-2">{p.image}</div>
+                <div className="w-12 h-12 mb-2 flex items-center justify-center overflow-hidden rounded-lg">
+                  {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-cover" /> : <span className="text-3xl">{p.image}</span>}
+                </div>
                 <h3 className="font-bold text-xs line-clamp-2 group-hover:text-blue-400 transition-colors">{p.name}</h3>
                 <p className="text-green-400 font-mono font-bold text-sm mt-1">${p.price.toFixed(2)}</p>
               </button>
@@ -146,9 +163,11 @@ function CatalogHome({ openProduct, categoryFilter, setCategoryFilter }: { openP
       {/* Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {filtered.map((p) => (
-          <div key={p.id} className="bg-slate-900/70 border border-slate-800 rounded-xl overflow-hidden hover:border-slate-700 transition-all group">
-            <button onClick={() => openProduct(p.id)} className="w-full p-5 text-center">
-              <div className="text-4xl mb-2 group-hover:scale-110 transition-transform">{p.image}</div>
+          <div key={p.id} className="bg-slate-900/70 border border-slate-800 rounded-xl overflow-hidden hover:border-slate-700 transition-all group relative">
+            <button onClick={() => setQuickView(p)} className="w-full p-5 text-center">
+              <div className="w-20 h-20 mx-auto mb-2 flex items-center justify-center overflow-hidden rounded-xl group-hover:scale-110 transition-transform">
+                {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-cover" /> : <span className="text-4xl">{p.image}</span>}
+              </div>
               <h3 className="font-semibold text-xs line-clamp-2 min-h-[32px]">{p.name}</h3>
               <div className="flex items-center justify-center gap-2 mt-2">
                 <span className="text-green-400 font-mono font-bold">${p.price.toFixed(2)}</span>
@@ -163,6 +182,32 @@ function CatalogHome({ openProduct, categoryFilter, setCategoryFilter }: { openP
         ))}
       </div>
       {filtered.length === 0 && <div className="text-center py-12 text-slate-600"><p className="text-3xl mb-2">🔍</p><p className="text-sm">No hay productos</p></div>}
+
+      {quickView && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[200] p-6" onClick={() => setQuickView(null)}>
+           <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+              <div className="w-full h-48 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-center overflow-hidden mb-6">
+                 {quickView.image?.startsWith('data:image') ? <img src={quickView.image} className="w-full h-full object-contain" /> : <span className="text-7xl">{quickView.image || '📦'}</span>}
+              </div>
+              <div className="space-y-3">
+                 <div>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-blue-400">{quickView.category}</span>
+                    <h2 className="text-xl font-bold leading-tight">{quickView.name}</h2>
+                 </div>
+                 <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 min-h-[80px]">
+                    <p className="text-[9px] font-black uppercase text-slate-600 mb-2">Descripción</p>
+                    <p className="text-xs text-slate-300 leading-relaxed italic">{quickView.description || 'Sin descripción detallada.'}</p>
+                 </div>
+                 <div className="flex gap-3 mt-4">
+                    <button onClick={() => { addToCart({ productId: quickView.id, name: quickView.name, sku: quickView.sku, price: quickView.price, image: quickView.image, stock: quickView.stock }); setQuickView(null) }} 
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 py-3 rounded-xl font-bold text-xs">Añadir al Carrito</button>
+                    <button onClick={() => { openProduct(quickView.id); setQuickView(null) }} 
+                      className="flex-1 bg-slate-800 hover:bg-slate-700 py-3 rounded-xl font-bold text-xs">Ver Detalle</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -188,8 +233,8 @@ function ProductDetail({ id, goBack, goCart }: { id: string; goBack: () => void;
     <div>
       <button onClick={goBack} className="text-slate-500 hover:text-white text-xs mb-4 flex items-center gap-1 transition-colors">← Volver al catálogo</button>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-12 flex items-center justify-center">
-          <span className="text-8xl">{p.image}</span>
+        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex items-center justify-center min-h-[300px] overflow-hidden">
+          {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-contain rounded-xl" /> : <span className="text-8xl">{p.image}</span>}
         </div>
         <div>
           <span className="text-[9px] uppercase tracking-widest text-blue-400 font-bold">{p.category}</span>
@@ -266,7 +311,9 @@ function CartPage({ goCheckout, goHome }: { goCheckout: () => void; goHome: () =
         <div className="lg:col-span-2 space-y-2">
           {cart.map((item) => (
             <div key={item.productId} className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
-              <span className="text-3xl">{item.image}</span>
+              <div className="w-12 h-12 flex items-center justify-center overflow-hidden rounded-lg bg-slate-800">
+                {item.image?.startsWith('data:image') ? <img src={item.image} className="w-full h-full object-cover" /> : <span className="text-xl">{item.image}</span>}
+              </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-sm truncate">{item.name}</h3>
                 <p className="text-[10px] text-slate-500 font-mono">{item.sku}</p>

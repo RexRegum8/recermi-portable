@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { getBaseUrl } from '../utils/api'
+import { getBaseUrl, fetchWithAuth } from '../utils/api'
+import { useProductStore } from '../store/ProductStore'
 
 export type TicketStatus = 'ENTRY' | 'DIAGNOSIS' | 'BUDGET' | 'REPAIR' | 'QC' | 'DELIVERED'
 
@@ -22,6 +23,10 @@ export function ServiceDashboard() {
   const [newNote, setNewNote] = useState('')
   const [newPart, setNewPart] = useState('')
   const [filterStatus, setFilterStatus] = useState<TicketStatus | 'ALL'>('ALL')
+  const [searchQuery, setSearchQuery] = useState('')
+  const { products } = useProductStore()
+  const [partSearch, setPartSearch] = useState('')
+  const [showPartHints, setShowPartHints] = useState(false)
   
   // Fidelity linking for closure
   const [customers, setCustomers] = useState<any[]>([])
@@ -119,13 +124,35 @@ export function ServiceDashboard() {
     } catch (e) { console.error(e) }
   }
 
-  const handleAddPart = async (id: string) => {
+  const handleAddPart = async (id: string, product?: any) => {
+    if (product) {
+      try {
+        const resp = await fetchWithAuth(`/api/tickets/${id}/parts`, {
+          method: 'POST',
+          body: JSON.stringify({ productId: product.id, qty: 1 })
+        })
+        if (resp.ok) {
+          await fetchTickets()
+          setPartSearch('')
+          setShowPartHints(false)
+        }
+      } catch (e) { console.error(e) }
+      return
+    }
+
     if (!newPart.trim()) return
     let currentParts: any[] = []
     try { currentParts = JSON.parse(selected?.parts || '[]') } catch(e) { currentParts = [] }
-    const updatedParts = [...currentParts, newPart.toUpperCase()]
+    const updatedParts = [...currentParts, { name: newPart.toUpperCase(), qty: 1, type: 'manual' }]
     await handleUpdateTicket(id, { parts: JSON.stringify(updatedParts) })
     setNewPart('')
+  }
+
+  const handleRemovePart = async (id: string, index: number) => {
+    try {
+      const resp = await fetchWithAuth(`/api/tickets/${id}/parts/${index}`, { method: 'DELETE' })
+      if (resp.ok) await fetchTickets()
+    } catch (e) { console.error(e) }
   }
 
   const handlePrintTicket = (t: any) => {
@@ -190,7 +217,13 @@ export function ServiceDashboard() {
   }
 
   const counts = STATUS_ORDER.map((s) => ({ status: s, count: tickets.filter((t) => t.status === s).length, ...STATUS_CFG[s] }))
-  const filtered = filterStatus === 'ALL' ? tickets : tickets.filter(t => t.status === filterStatus)
+  const filtered = tickets.filter(t => {
+    const matchesStatus = filterStatus === 'ALL' || t.status === filterStatus
+    const matchesSearch = t.customer?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          t.tkNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          t.device?.toLowerCase().includes(searchQuery.toLowerCase())
+    return matchesStatus && matchesSearch
+  })
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-50 p-4">
@@ -199,7 +232,19 @@ export function ServiceDashboard() {
           <h1 className="text-xl font-bold tracking-tight">Servicio Técnico <span className="text-blue-500">Rexermi OS</span></h1>
           <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Taller y Reparaciones en Tiempo Real</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-xl font-bold text-sm shadow-xl shadow-blue-900/30 transition-all">+ Nuevo Equipo</button>
+        <div className="flex items-center gap-3">
+          <div className="relative w-64">
+            <input 
+              type="text" 
+              placeholder="🔍 Buscar cliente, equipo o TK..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-10 py-1.5 text-[10px] outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <span className="absolute left-3 top-2 opacity-30 text-[10px]">🔍</span>
+          </div>
+          <button onClick={() => setShowNew(true)} className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-xl font-bold text-sm shadow-xl shadow-blue-900/30 transition-all">+ Nuevo Equipo</button>
+        </div>
       </header>
 
       {/* States Pipeline */}
@@ -310,21 +355,53 @@ export function ServiceDashboard() {
                   {(() => {
                     let ps = []
                     try { ps = JSON.parse(selected.parts || '[]') } catch(e) { ps = [] }
-                    return ps.map((p: string, i: number) => (
+                    return ps.map((p: any, i: number) => (
                       <span key={i} className="bg-slate-950 border border-slate-800 text-blue-400 text-[9px] font-black px-2 py-1 rounded-md flex items-center gap-2">
-                        {p}
-                        <button onClick={() => {
-                          const updated = ps.filter((_: any, j: number) => j !== i)
-                          handleUpdateTicket(selected.id, { parts: JSON.stringify(updated) })
-                        }} className="text-slate-600 hover:text-red-400">✕</button>
+                         {typeof p === 'string' ? p : `${p.qty}x ${p.name}`}
+                        <button onClick={() => handleRemovePart(selected.id, i)} className="text-slate-600 hover:text-red-400">✕</button>
                       </span>
                     ))
                   })()}
                 </div>
-                <div className="flex gap-2">
-                  <input value={newPart} onChange={e => setNewPart(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddPart(selected.id)}
-                    className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-[10px] outline-none" placeholder="Añadir repuesto..." />
-                  <button onClick={() => handleAddPart(selected.id)} className="bg-blue-600 px-3 rounded-lg text-xs font-bold">+</button>
+                <div className="relative">
+                  <div className="flex gap-2">
+                    <input 
+                      value={partSearch} 
+                      onChange={e => {
+                        setPartSearch(e.target.value)
+                        setShowPartHints(true)
+                      }} 
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && partSearch.trim()) {
+                          handleAddPart(selected.id) // Fallback to manual if no selection
+                        }
+                      }}
+                      className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-[10px] outline-none focus:border-blue-500/50" 
+                      placeholder="🔍 Buscar repuesto en inventario..." 
+                    />
+                  </div>
+                  
+                  {showPartHints && partSearch.length > 1 && (
+                    <div className="absolute z-10 w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-40 overflow-y-auto custom-scrollbar">
+                      {products
+                        .filter(p => p.name.toLowerCase().includes(partSearch.toLowerCase()) || p.sku.toLowerCase().includes(partSearch.toLowerCase()))
+                        .map(p => (
+                          <button 
+                            key={p.id} 
+                            onClick={() => handleAddPart(selected.id, p)}
+                            className="w-full text-left p-2 hover:bg-blue-600/20 border-b border-slate-800 last:border-0 flex justify-between items-center group"
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-[10px] font-bold text-white group-hover:text-blue-400">{p.name}</span>
+                              <span className="text-[8px] text-slate-500 font-mono">{p.sku}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className={`text-[9px] font-black ${p.stock > 0 ? 'text-green-500' : 'text-red-500'}`}>Stock: {p.stock}</span>
+                            </div>
+                          </button>
+                        ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -12,7 +12,9 @@ import { SetupWizard } from './components/SetupWizard'
 
 function Root() {
   const hostname = window.location.hostname
-  const isCatalog = hostname.includes('rexermidigital') || window.location.search.includes('catalog=true')
+  const isCatalog = hostname.includes('rexermidigital') || 
+                    (hostname.includes('rexermi.uk') && !window.location.search.includes('admin=true')) || 
+                    window.location.search.includes('catalog=true')
 
   const [config, setConfig] = useState(() => {
     const saved = localStorage.getItem('rexermi_config')
@@ -28,10 +30,6 @@ function Root() {
     }
   }, [config])
 
-  if (!config) {
-    return <SetupWizard onConfigured={setConfig} />
-  }
-
   return (
     <ProductStoreProvider>
       {isCatalog ? (
@@ -40,9 +38,13 @@ function Root() {
         </CustomerProvider>
       ) : (
         <AuthProvider>
-          <SalesProvider>
-            <App />
-          </SalesProvider>
+          {!config ? (
+            <SetupWizard onConfigured={setConfig} />
+          ) : (
+            <SalesProvider>
+              <App />
+            </SalesProvider>
+          )}
         </AuthProvider>
       )}
     </ProductStoreProvider>

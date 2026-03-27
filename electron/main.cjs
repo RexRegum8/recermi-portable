@@ -1,108 +1,61 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
-const path = require('path');
-const { spawn } = require('child_process');
+const { app } = require('electron');
+const { createMainWindow, getMainWindow } = require('./windowManager.cjs');
+const { startBackend, stopBackend } = require('./backendManager.cjs');
+const { startTunnel, stopTunnel } = require('./tunnelManager.cjs');
+const { registerIpcHandlers } = require('./ipcHandlers.cjs');
+const { setupAutoUpdater } = require('./updateManager.cjs');
+const { log } = require('./logger.cjs');
+
 const isDev = process.env.NODE_ENV === 'development';
 
-let mainWindow;
-let backendProcess;
+function init() {
+  log(`[MAIN] Initializing Rexermi OS (Version: ${app.getVersion()})`);
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.cjs'),
-    },
-    title: 'Rexermi OS',
-    backgroundColor: '#020617', // Match slate-950
-  });
-
-  const indexPath = isDev 
-    ? 'http://localhost:5173' 
-    : path.join(__dirname, '../dist/index.html');
-
-  if (isDev) {
-    mainWindow.loadURL(indexPath);
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(indexPath).catch(err => {
-      console.error('Failed to load index.html:', err);
+  // 1. Start Backend and Tunnel
+  startBackend(isDev, () => {
+    startTunnel('auto', null, (url) => {
+      const win = getMainWindow();
+      if (win) win.webContents.send('tunnel-ready', url);
     });
-  }
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-    if (backendProcess) {
-       backendProcess.kill();
-    }
   });
 
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    console.log(`[Renderer] ${message}`);
-  });
+  // 2. Create UI
+  createMainWindow(isDev);
+
+  // 3. Register IPC Handlers
+  registerIpcHandlers();
+
+  // 4. Setup Auto-updater
+  setupAutoUpdater();
 }
 
-function startBackend() {
-  if (backendProcess) return;
-
-  console.log('Starting backend process...');
-  
-  // Try bundled path first, fallback to source
-  let backendPath = path.join(__dirname, '../backend/dist/index.cjs');
-  let backendCwd = path.join(__dirname, '..');
-
-  // Check if dist exists, if not use src (dev)
-  const fs = require('fs');
-  if (!fs.existsSync(backendPath)) {
-    backendPath = path.join(__dirname, '../backend/src/index.js');
-    backendCwd = path.join(__dirname, '../backend');
-  }
-  
-  try {
-    backendProcess = require('child_process').fork(backendPath, [], {
-      cwd: backendCwd,
-      env: { 
-        ...process.env,
-        PORT: '3001',
-        DATABASE_URL: isDev ? undefined : `file:${path.join(app.getPath('userData'), 'rexermi.db')}`
-      },
-      stdio: 'pipe'
-    });
-
-    backendProcess.stdout.on('data', (data) => console.log(`Backend: ${data}`));
-    backendProcess.stderr.on('data', (data) => console.error(`Backend Error: ${data}`));
-    
-    backendProcess.on('exit', (code) => {
-      console.log(`Backend process exited with code ${code}`);
-      backendProcess = null;
-    });
-  } catch (err) {
-    console.error('Failed to fork backend process:', err);
-  }
-}
-
-// IPC to start/stop backend (keeping for manual retries if needed)
-ipcMain.on('start-backend', () => startBackend());
-
-ipcMain.on('open-external', (event, url) => {
-  shell.openExternal(url);
-});
-
-app.on('ready', () => {
-  startBackend();
-  createWindow();
-});
+app.on('ready', init);
 
 app.on('window-all-closed', () => {
+  log('[MAIN] All windows closed');
   if (process.platform !== 'darwin') {
+    stopBackend();
+    stopTunnel();
     app.quit();
   }
 });
 
 app.on('activate', () => {
-  if (mainWindow === null) {
-    createWindow();
+  if (getMainWindow() === null) {
+    createMainWindow(isDev);
   }
 });
+
+// Single instance lock
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const win = getMainWindow();
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+}

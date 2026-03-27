@@ -5,6 +5,7 @@ const router = express.Router()
 
 // List all quotations
 router.get('/', async (req, res) => {
+  console.log('[QUOTATIONS] Fetching all quotations...')
   try {
     const quotations = await prisma.quotation.findMany({
       include: { items: { include: { product: true } } },
@@ -20,8 +21,10 @@ router.get('/', async (req, res) => {
       return q
     })
     
+    console.log(`[QUOTATIONS] Successfully fetched ${quotations.length} quotations`)
     res.json(updated)
   } catch (e) {
+    console.error(`[QUOTATIONS] Error fetching quotations: ${e.message}`)
     res.status(500).json({ error: 'Error al obtener presupuestos' })
   }
 })
@@ -29,6 +32,7 @@ router.get('/', async (req, res) => {
 // Create quotation
 router.post('/', async (req, res) => {
   const { customerName, customerEmail, customerPhone, items, subtotal, globalDiscount, iva, total, notes, validUntil } = req.body
+  console.log(`[QUOTATIONS] Creating quotation for: ${customerName}`)
   try {
     const quotation = await prisma.$transaction(async (tx) => {
       const lastQ = await tx.quotation.findFirst({ orderBy: { number: 'desc' } })
@@ -58,21 +62,26 @@ router.post('/', async (req, res) => {
         include: { items: { include: { product: true } } }
       })
     })
+    console.log(`[QUOTATIONS] Quotation created successfully: ${quotation.number}`)
     res.status(201).json(quotation)
   } catch (e) {
-    console.error(e)
+    console.error(`[QUOTATIONS] Error creating quotation: ${e.message}`)
     res.status(400).json({ error: 'Error al crear presupuesto' })
   }
 })
 
 // Update/Sync quotation (for expired or manual sync)
 router.patch('/:id/sync', async (req, res) => {
+  console.log(`[QUOTATIONS] Syncing prices for quotation ID: ${req.params.id}`)
   try {
     const q = await prisma.quotation.findUnique({
       where: { id: req.params.id },
       include: { items: { include: { product: true } } }
     })
-    if (!q) throw new Error('No encontrado')
+    if (!q) {
+      console.warn(`[QUOTATIONS] Sync failed: Quotation ${req.params.id} not found`)
+      throw new Error('No encontrado')
+    }
 
     // Recalculate based on current prices
     let newSubtotal = 0
@@ -107,30 +116,45 @@ router.patch('/:id/sync', async (req, res) => {
         include: { items: { include: { product: true } } }
       })
     })
+    console.log(`[QUOTATIONS] Quotation ${q.number} synced successfully`)
     res.json(updated)
   } catch (e) {
+    console.error(`[QUOTATIONS] Error syncing quotation ${req.params.id}: ${e.message}`)
     res.status(400).json({ error: e.message })
   }
 })
 
 // Convert quotation to sale
 router.post('/:id/convert', async (req, res) => {
+  console.log(`[QUOTATIONS] Converting quotation ID: ${req.params.id} to sale...`)
   try {
     const sale = await prisma.$transaction(async (tx) => {
       const q = await tx.quotation.findUnique({
         where: { id: req.params.id },
         include: { items: { include: { product: true } } }
       })
-      if (!q) throw new Error('Presupuesto no encontrado')
-      if (q.status === 'CONVERTED') throw new Error('Ya convertido')
+      if (!q) {
+        console.warn(`[QUOTATIONS] Convert failed: Quotation ${req.params.id} not found`)
+        throw new Error('Presupuesto no encontrado')
+      }
+      if (q.status === 'CONVERTED') {
+        console.warn(`[QUOTATIONS] Convert failed: Quotation ${q.number} already converted`)
+        throw new Error('Ya convertido')
+      }
 
       // Check stock
       for (const it of q.items) {
-        if (it.product.stock < it.qty) throw new Error(`Stock insuficiente: ${it.product.name}`)
+        if (it.product.stock < it.qty) {
+          console.warn(`[QUOTATIONS] Convert failed: Insufficient stock for ${it.product.name}`)
+          throw new Error(`Stock insuficiente: ${it.product.name}`)
+        }
       }
 
       const activeSession = await tx.cashSession.findFirst({ where: { status: 'OPEN' }, orderBy: { openedAt: 'desc' } })
-      if (!activeSession) throw new Error('No hay sesión de caja abierta')
+      if (!activeSession) {
+        console.warn('[QUOTATIONS] Convert failed: No open cash session')
+        throw new Error('No hay sesión de caja abierta')
+      }
 
       const config = await tx.systemConfig.findFirst() || { exchangeRateBCV: 36.5 }
       const now = new Date()
@@ -154,7 +178,8 @@ router.post('/:id/convert', async (req, res) => {
               productId: it.productId,
               qty: it.qty,
               price: it.price,
-              discount: it.discount
+              discount: it.discount,
+              warrantyDays: it.product.warrantyDays
             }))
           }
         }
@@ -185,8 +210,10 @@ router.post('/:id/convert', async (req, res) => {
 
       return newSale
     })
+    console.log(`[QUOTATIONS] Quotation converted successfully: ${sale.saleNumber}`)
     res.json(sale)
   } catch (e) {
+    console.error(`[QUOTATIONS] Error converting quotation ${req.params.id}: ${e.message}`)
     res.status(400).json({ error: e.message })
   }
 })

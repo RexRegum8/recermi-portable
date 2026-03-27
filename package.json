@@ -1,7 +1,7 @@
 {
   "name": "rexermi-os",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "Sistema de gestión profesional Rexermi OS",
   "author": "Rexermi",
   "type": "module",
@@ -13,55 +13,45 @@
     "preview": "vite preview",
     "electron:dev": "cross-env NODE_ENV=development electron .",
     "electron:start": "wait-on http://localhost:5173 && npm run electron:dev",
-    "electron:build": "npm run build && electron-builder"
+    "electron:build": "npm run build && electron-builder",
+    "electron:publish": "npm run build && electron-builder --publish always"
   },
   "build": {
     "appId": "com.rexermi.os",
-    "productName": "Rexermi OS",
+    "productName": "Rexermi-OS",
     "directories": {
       "output": "release"
     },
     "files": [
-      "!**/*",
       "dist/**/*",
       "electron/**/*",
       "backend/dist/**/*",
       "backend/prisma/**/*",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "node_modules/@prisma/engines",
-        "to": "node_modules/@prisma/engines",
-        "filter": [
-          "query_engine-windows.exe",
-          "migration_engine-windows.exe"
-        ]
-      },
-      {
-        "from": "node_modules/@prisma/client",
-        "to": "node_modules/@prisma/client",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "node_modules/.prisma",
-        "to": "node_modules/.prisma",
-        "filter": [
-          "**/*"
-        ]
-      }
+      "package.json",
+      "bin/**/*",
+      "node_modules/**/*"
     ],
     "asar": true,
+    "asarUnpack": [
+      "dist/**/*",
+      "backend/dist/**/*",
+      "backend/prisma/**/*",
+      "bin/**/*"
+    ],
     "win": {
-      "target": "nsis",
-      "publish": null
+      "target": "nsis"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "RexRegum8",
+        "repo": "recermi-portable"
+      }
+    ],
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": false
+      "allowToChangeInstallationDirectory": true
     },
     "npmRebuild": false
   },
@@ -69,14 +59,19 @@
     "@prisma/client": "^6.19.2",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3",
     "express": "^4.22.1",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.363.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "zustand": "^4.5.7"
   },
   "devDependencies": {

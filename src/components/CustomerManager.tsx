@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getBaseUrl } from '../utils/api'
+import { getBaseUrl, fetchWithAuth } from '../utils/api'
 import { useAuth } from '../auth/AuthContext'
 import { useProductStore, LoyaltyReward } from '../store/ProductStore'
 import { CustomerProfileModal } from './CustomerProfileModal'
@@ -12,12 +12,13 @@ export function CustomerManager() {
   const { user, isAdmin } = useAuth()
   const { rewards } = useProductStore()
   const [showRewardsModal, setShowRewardsModal] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const fetchCustomers = async () => {
     try {
-      const res = await fetch(`${getBaseUrl()}/api/customers`)
+      const res = await fetchWithAuth('/api/customers')
       const data = await res.json()
-      setCustomers(data)
+      setCustomers(Array.isArray(data) ? data : [])
     } catch (e: any) {
       console.error(e)
     } finally {
@@ -27,7 +28,7 @@ export function CustomerManager() {
 
   const fetchDetails = async (id: string) => {
     try {
-      const res = await fetch(`${getBaseUrl()}/api/customers/${id}`)
+      const res = await fetchWithAuth(`/api/customers/${id}`)
       const data = await res.json()
       setSelected(data)
     } catch (e) {
@@ -42,8 +43,8 @@ export function CustomerManager() {
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar este cliente y todo su historial?')) return
     try {
-      await fetch(`${getBaseUrl()}/api/customers/${id}`, { method: 'DELETE' })
-      setCustomers(customers.filter(c => c.id !== id))
+      await fetchWithAuth(`/api/customers/${id}`, { method: 'DELETE' })
+      setCustomers(prev => prev.filter(c => c.id !== id))
       setSelected(null)
     } catch (e: any) {
       alert('Error al eliminar')
@@ -53,9 +54,8 @@ export function CustomerManager() {
   const handleUpdatePoints = async (id: string, newPoints: number) => {
     if (!isAdmin) return
     try {
-      await fetch(`${getBaseUrl()}/api/customers/${id}`, {
+      await fetchWithAuth(`/api/customers/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ points: newPoints })
       })
       fetchDetails(id)
@@ -72,9 +72,8 @@ export function CustomerManager() {
     if (!confirm(`¿Canjear ${reward.pointsCost} puntos por: ${reward.name}?`)) return
     
     try {
-      const res = await fetch(`${getBaseUrl()}/api/loyalty/redeem`, {
+      const res = await fetchWithAuth('/api/loyalty/redeem', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId: selected.id, rewardId: reward.id })
       })
       if (!res.ok) {
@@ -88,6 +87,11 @@ export function CustomerManager() {
     } catch (e: any) { alert(e.message) }
   }
 
+  const filteredCustomers = Array.isArray(customers) ? customers.filter(c => 
+    c.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    c.ci?.toLowerCase().includes(searchQuery.toLowerCase())
+  ) : []
+
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-50 p-5 overflow-hidden">
       <header className="mb-6 flex justify-between items-center">
@@ -95,8 +99,20 @@ export function CustomerManager() {
           <h1 className="text-2xl font-black tracking-tight text-white">Directorio de Clientes</h1>
           <p className="text-[11px] text-slate-500 uppercase tracking-widest font-bold">Gestión de Perfiles y Programa de Puntos</p>
         </div>
-        <div className="bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 text-xs font-bold text-slate-400">
-          Total Clientes: <span className="text-blue-400 ml-1">{customers.length}</span>
+        <div className="flex items-center gap-3">
+          <div className="relative w-72">
+            <input 
+              type="text" 
+              placeholder="🔍 Buscar por nombre o CI..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-10 py-2 text-xs outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <span className="absolute left-3 top-2.5 opacity-30 text-xs">🔍</span>
+          </div>
+          <div className="bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 text-xs font-bold text-slate-400">
+            Total Clientes: <span className="text-blue-400 ml-1">{customers.length}</span>
+          </div>
         </div>
       </header>
 
@@ -109,7 +125,7 @@ export function CustomerManager() {
              </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {customers.map(c => (
+              {filteredCustomers.map(c => (
                 <div key={c.id} onClick={() => fetchDetails(c.id)}
                   className={`bg-slate-900/60 border rounded-[2rem] p-6 cursor-pointer transition-all hover:scale-[1.02] active:scale-95 ${selected?.id === c.id ? 'border-blue-500 bg-blue-950/20 shadow-lg shadow-blue-900/10' : 'border-slate-800 hover:border-slate-700'}`}>
                   <div className="flex items-center gap-4 mb-4">
@@ -135,7 +151,19 @@ export function CustomerManager() {
 
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="text-slate-600 font-medium">Desde: {new Date(c.createdAt).toLocaleDateString()}</span>
-                    <span className="text-blue-500 font-black uppercase tracking-tighter">Ver Historial ▸</span>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(c.id);
+                        }}
+                        className="p-2 text-slate-600 hover:text-red-500 transition-all"
+                        title="Eliminar Cliente"
+                      >
+                        🗑️
+                      </button>
+                      <span className="text-blue-500 font-black uppercase tracking-tighter">Ver Historial ▸</span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -151,9 +179,8 @@ export function CustomerManager() {
             onClose={() => setSelected(null)} 
             onSave={async (updated) => {
               try {
-                const res = await fetch(`${getBaseUrl()}/api/customers/${selected.id}/admin-update`, {
+                const res = await fetchWithAuth(`/api/customers/${selected.id}/admin-update`, {
                   method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(updated)
                 })
                 if (!res.ok) throw new Error()

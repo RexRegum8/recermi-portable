@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from './auth/AuthContext'
+import { getBaseUrl } from './utils/api'
 import { LoginScreen } from './components/LoginScreen'
 import { POSComponent } from './components/POSComponent'
 import { ServiceDashboard } from './components/ServiceDashboard'
@@ -24,7 +25,7 @@ function App() {
       const today = new Date().toISOString().split('T')[0]
       if (lastUpdate !== today) {
         // Auto-update BCV
-        fetch('http://localhost:3001/api/config/fetch-bcv')
+        fetch(`${getBaseUrl()}/api/config/fetch-bcv`)
           .then(r => r.json())
           .then(data => {
             if (data.price) {
@@ -34,7 +35,7 @@ function App() {
           }).catch(e => console.error('Error auto-updating BCV:', e))
 
         // Auto-update Parallel (USDT context)
-        fetch('http://localhost:3001/api/config/fetch-paralelo')
+        fetch(`${getBaseUrl()}/api/config/fetch-paralelo`)
           .then(r => r.json())
           .then(data => {
             if (data.price) {
@@ -85,7 +86,9 @@ function App() {
         <div className="mt-auto flex flex-col items-center gap-2">
           <div className="w-7 h-px bg-slate-700" />
           <button onClick={() => setShowMyProfile(true)} title="Ver Mi Perfil / Asistencia" className="text-center group relative">
-            <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-base hover:bg-slate-700 hover:border-blue-500/50 transition-all">{user.avatar}</div>
+            <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-base hover:bg-slate-700 hover:border-blue-500/50 transition-all overflow-hidden">
+              {user.photo ? <img src={user.photo} className="w-full h-full object-cover" /> : user.avatar}
+            </div>
             <span className="absolute left-12 bottom-0 bg-slate-800 text-white text-[10px] font-bold px-2 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-slate-700 shadow-xl z-50">
               {user.name} <span className={`ml-1 px-1 py-0.5 rounded text-[8px] border ${roleColor}`}>{roleLabel}</span>
             </span>

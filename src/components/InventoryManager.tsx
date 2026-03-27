@@ -5,7 +5,7 @@ import { useProductStore, Product } from '../store/ProductStore'
 import { getBaseUrl } from '../utils/api'
 
 export function InventoryManager() {
-  const { user, canEdit, canAdd } = useAuth()
+  const { user, config, canEdit, canAdd } = useAuth()
   const { products, rewards, createProduct, updateProduct, recordMovement, createReward, updateReward, deleteReward } = useProductStore()
   const [activeView, setActiveView] = useState<'products' | 'movements' | 'audit' | 'rewards'>('products')
   const [filter, setFilter] = useState('')
@@ -25,6 +25,7 @@ export function InventoryManager() {
   const [nn, setNn] = useState(''); const [ns, setNs] = useState(''); const [nc, setNc] = useState('Repuesto')
   const [np, setNp] = useState(''); const [nco, setNco] = useState(''); const [nst, setNst] = useState(''); const [nm, setNm] = useState('5')
   const [nw, setNw] = useState('Principal'); const [ngx, setNgx] = useState('30'); const [ni, setNi] = useState('')
+  const [nd, setNd] = useState('')
 
   // Movement Form
   const [ms, setMs] = useState(''); const [mq, setMq] = useState(''); const [mt, setMt] = useState<'IN' | 'OUT' | 'ADJUSTMENT'>('IN'); const [mr, setMr] = useState('')
@@ -32,6 +33,10 @@ export function InventoryManager() {
   // Reward Form
   const [rn, setRn] = useState(''); const [rd, setRd] = useState(''); const [rc, setRc] = useState('100')
   const [rt, setRt] = useState<'COUPON' | 'DISCOUNT' | 'PRODUCT'>('COUPON'); const [rv, setRv] = useState('5')
+  
+  useEffect(() => {
+     if (config.defaultWarrantyDays) setNgx(config.defaultWarrantyDays.toString())
+  }, [config.defaultWarrantyDays])
 
   useEffect(() => {
     if (activeView === 'movements') {
@@ -53,14 +58,20 @@ export function InventoryManager() {
 
   const handleCreateProduct = async () => {
     if (!ns || !nn || !np) return
-    await createProduct({ 
-      sku: ns.toUpperCase(), name: nn, category: nc, 
-      stock: Number(nst) || 0, minStock: Number(nm) || 5, 
-      price: Number(np) || 0, cost: Number(nco) || 0, warehouse: nw,
-      warrantyDays: Number(ngx) || 30,
-      image: ni || '📦'
-    })
-    setNs(''); setNn(''); setNp(''); setNco(''); setNst(''); setNi(''); setShowNew(false)
+    console.log(`[FRONTEND-INVT] Attempting to create product: ${nn} (SKU: ${ns})`)
+    try {
+      await createProduct({ 
+        sku: ns.toUpperCase(), name: nn, category: nc, description: nd,
+        stock: Number(nst) || 0, minStock: Number(nm) || 5, 
+        price: Number(np) || 0, cost: Number(nco) || 0, warehouse: nw,
+        warrantyDays: Number(ngx) || 30,
+        image: ni || '📦'
+      })
+      console.log('[FRONTEND-INVT] Product created successfully')
+      setNs(''); setNn(''); setNp(''); setNco(''); setNst(''); setNi(''); setNd(''); setShowNew(false)
+    } catch (e: any) {
+      console.error(`[FRONTEND-INVT] Error creating product: ${e.message}`)
+    }
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,18 +85,33 @@ export function InventoryManager() {
 
   const handleCreateReward = async () => {
     if (!rn || !rc) return
-    await createReward({ name: rn, description: rd, pointsCost: Number(rc), isActive: true, type: rt, value: Number(rv) })
-    setRn(''); setRd(''); setRc('100'); setRv('5'); setShowNewReward(false)
+    console.log(`[FRONTEND-INVT] Creating loyalty reward: ${rn}`)
+    try {
+      await createReward({ name: rn, description: rd, pointsCost: Number(rc), isActive: true, type: rt, value: Number(rv) })
+      console.log('[FRONTEND-INVT] Reward created successfully')
+      setRn(''); setRd(''); setRc('100'); setRv('5'); setShowNewReward(false)
+    } catch (e: any) {
+      console.error(`[FRONTEND-INVT] Error creating reward: ${e.message}`)
+    }
   }
 
   const handleCreateMovement = async () => {
     if (!ms || !mq) return
+    console.log(`[FRONTEND-INVT] Creating stock movement for SKU: ${ms} (${mq} units, Type: ${mt})`)
     const prod = products.find((p) => p.sku.toLowerCase() === ms.toLowerCase())
-    if (!prod) return
-    await recordMovement(prod.id, { 
-      quantity: Number(mq), type: mt, reason: mr || `${mt} manual`, user: user?.name || '' 
-    })
-    setMs(''); setMq(''); setMr(''); setShowMov(false)
+    if (!prod) {
+      console.warn(`[FRONTEND-INVT] Product with SKU ${ms} not found for movement`)
+      return
+    }
+    try {
+      await recordMovement(prod.id, { 
+        quantity: Number(mq), type: mt, reason: mr || `${mt} manual`, user: user?.name || '' 
+      })
+      console.log('[FRONTEND-INVT] Stock movement recorded successfully')
+      setMs(''); setMq(''); setMr(''); setShowMov(false)
+    } catch (e: any) {
+      console.error(`[FRONTEND-INVT] Error recording movement: ${e.message}`)
+    }
   }
 
   const fetchHistory = async (p: Product) => {
@@ -269,10 +295,21 @@ export function InventoryManager() {
                 <input value={nn} onChange={e => setNn(e.target.value)} placeholder="Nombre del Producto" className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 text-sm" />
                 <div className="grid grid-cols-2 gap-4">
                   <input value={ns} onChange={e => setNs(e.target.value)} placeholder="SKU" className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 text-xs font-mono" />
-                   <select value={nc} onChange={e => setNc(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 text-xs font-bold">
-                    {categories.filter(c => c !== 'TODOS').map(c => <option key={c} value={c}>{c}</option>)}
-                    <option value="Repuesto">Repuesto</option>
-                  </select>
+                   <div className="relative">
+                     <input 
+                       list="category-suggestions" 
+                       value={nc} 
+                       onChange={e => setNc(e.target.value)} 
+                       placeholder="Categoría" 
+                       className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 text-xs font-bold" 
+                     />
+                     <datalist id="category-suggestions">
+                       {categories.filter(c => c !== 'TODOS').map(c => <option key={c} value={c} />)}
+                       <option value="Repuesto" />
+                       <option value="Accesorio" />
+                       <option value="Servicio" />
+                     </datalist>
+                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                    <input type="number" value={np} onChange={e => setNp(e.target.value)} placeholder="Precio" className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm font-mono" />
@@ -282,6 +319,10 @@ export function InventoryManager() {
                 <div>
                    <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block">Días de Garantía</label>
                    <input type="number" value={ngx} onChange={e => setNgx(e.target.value)} placeholder="30" className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-mono" />
+                </div>
+                <div>
+                   <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block">Descripción Detallada</label>
+                   <textarea value={nd} onChange={e => setNd(e.target.value)} placeholder="Características, especificaciones, compatibilidad..." className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm min-h-[100px] resize-none" />
                 </div>
              </div>
              <div className="flex gap-4 mt-8">

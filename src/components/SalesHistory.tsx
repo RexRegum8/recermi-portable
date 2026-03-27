@@ -39,8 +39,9 @@ export function SalesHistory() {
     return dailySales.reduce((acc: any, s) => {
       const method = s.paymentMethod || 'Otros'
       acc[method] = (acc[method] || 0) + s.total
+      acc['_ivaTotal'] = (acc['_ivaTotal'] || 0) + s.iva
       return acc
-    }, {})
+    }, { _ivaTotal: 0 })
   }
 
   const handleViewSession = async (session: CashSession) => {
@@ -70,7 +71,7 @@ export function SalesHistory() {
           <table className="w-full text-left text-sm">
              <thead className="sticky top-0 z-10">
                <tr className="bg-slate-800/90 text-slate-400 text-[9px] uppercase tracking-widest font-bold">
-                 <th className="px-6 py-4">ID</th><th className="px-6 py-4">Hora</th><th className="px-6 py-4">Productos</th><th className="px-6 py-4">Método</th><th className="px-6 py-4 text-right">Total USD</th>
+                 <th className="px-6 py-4">ID</th><th className="px-6 py-4">Hora</th><th className="px-6 py-4">Productos</th><th className="px-6 py-4">Método</th><th className="px-6 py-4 text-right">IVA</th><th className="px-6 py-4 text-right">Total USD</th>
                </tr>
              </thead>
              <tbody className="divide-y divide-slate-800/40">
@@ -80,7 +81,8 @@ export function SalesHistory() {
                    <td className="px-6 py-4 font-mono text-xs text-slate-500">{s.time}</td>
                    <td className="px-6 py-4 text-[10px]">{s.items.length} ítems</td>
                    <td className="px-6 py-4"><span className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] font-bold">{s.paymentMethod}</span></td>
-                   <td className="px-6 py-4 text-right font-mono font-bold text-green-400">${s.total.toFixed(2)}</td>
+                   <td className="px-6 py-4 text-right font-mono text-xs text-slate-500">${s.iva.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-right font-mono font-bold text-green-400">${s.total.toFixed(2)}</td>
                  </tr>
                ))}
              </tbody>
@@ -269,6 +271,7 @@ export function SalesHistory() {
             <div className="space-y-3 mb-6 bg-slate-800/30 p-4 rounded-xl border border-slate-700/50">
                <div className="flex justify-between text-[11px]"><span className="text-slate-500 uppercase font-bold">Fondo Inicial</span><span className="font-mono text-slate-300">${activeSession.openingBalance.toFixed(2)}</span></div>
                <div className="flex justify-between text-[11px]"><span className="text-slate-500 uppercase font-bold">Total Ventas USD</span><span className="font-mono text-green-400 font-bold">${dailyTotal.toFixed(2)}</span></div>
+               <div className="flex justify-between text-[11px]"><span className="text-slate-500 uppercase font-bold">Total IVA Recaudado</span><span className="font-mono text-blue-400 opacity-60">${calculateBreakdown()._ivaTotal.toFixed(2)}</span></div>
                
                <div className="py-2 border-t border-slate-700/50 mt-2">
                  <p className="text-[9px] uppercase font-black text-slate-600 mb-2">Desglose por Método:</p>
@@ -295,6 +298,23 @@ export function SalesHistory() {
               <button onClick={() => setShowCloseModal(false)} className="w-full text-slate-500 text-xs font-bold hover:text-white transition-all">Seguir Facturando</button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Proof Viewer Modal */}
+      {viewProof && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[100] p-6" onClick={() => setViewProof(null)}>
+           <div className="relative max-w-4xl w-full flex flex-col items-center animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
+              <button 
+                onClick={() => setViewProof(null)} 
+                className="absolute -top-12 right-0 text-white flex items-center gap-2 font-black text-xs hover:text-blue-400 transition-all uppercase tracking-widest"
+              >
+                <span>Cerrar</span> <span className="text-2xl">✕</span>
+              </button>
+              <div className="bg-white p-2 rounded-3xl shadow-2xl overflow-hidden ring-4 ring-white/10">
+                <img src={viewProof} className="max-h-[85vh] object-contain rounded-2xl" />
+              </div>
+              <p className="mt-4 text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Comprobante de Pago Guardado</p>
+           </div>
         </div>
       )}
     </div>

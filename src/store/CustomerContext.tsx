@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
 export interface Customer {
   id: string; 
@@ -51,7 +51,7 @@ interface CustomerContextType {
   placeOrder: (paymentMethod: string) => Promise<Order | null>
 }
 
-import { getBaseUrl } from '../utils/api'
+import { getBaseUrl, fetchWithAuth } from '../utils/api'
 
 const CustomerContext = createContext<CustomerContextType | null>(null)
 
@@ -62,27 +62,28 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   })
   const [cart, setCart] = useState<CartItem[]>([])
   const [orders, setOrders] = useState<Order[]>([])
-  const [config, setConfig] = useState<any>({ exchangeRateBCV: 36.50, storeName: 'Rexermi Tech' })
+  const [config, setConfig] = useState<any>({ exchangeRateBCV: 36.50, storeName: 'Rexermi' })
 
   const refreshConfig = async () => {
-    const baseUrl = getBaseUrl()
     try {
-      const resp = await fetch(`${baseUrl}/api/config`)
+      const resp = await fetchWithAuth('/api/config')
       const data = await resp.json()
       if (data && !data.error) setConfig(data)
-    } catch (e) { console.error(e) }
+    } catch (e: any) { 
+      console.error(`[FRONTEND-CUST] Error refreshing config: ${e.message}`) 
+    }
   }
 
-  useState(() => { refreshConfig() })
+  useEffect(() => {
+    refreshConfig()
+    if (localStorage.getItem('customerToken')) {
+      refreshProfile()
+    }
+  }, [])
 
   const refreshProfile = async () => {
-    const baseUrl = getBaseUrl()
-    const token = localStorage.getItem('customerToken')
-    if (!token) return
     try {
-      const resp = await fetch(`${baseUrl}/api/customers/me`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+      const resp = await fetchWithAuth('/api/customers/me')
       if (resp.ok) {
         const data = await resp.json()
         const { password: _, ...customerData } = data
@@ -90,15 +91,15 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('customer', JSON.stringify(customerData))
         if (data.orders) setOrders(data.orders)
       }
-    } catch (e) { console.error(e) }
+    } catch (e: any) { 
+        console.error(`[FRONTEND-CUST] Error refreshing profile: ${e.message}`) 
+    }
   }
 
   const registerCustomer = async (data: any): Promise<boolean> => {
-    const baseUrl = getBaseUrl()
     try {
-      const resp = await fetch(`${baseUrl}/api/customers/register`, {
+      const resp = await fetchWithAuth('/api/customers/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       })
       return resp.ok
@@ -106,22 +107,28 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   }
 
   const loginCustomer = async (email: string, password: string): Promise<boolean> => {
-    const baseUrl = getBaseUrl()
     try {
-      const resp = await fetch(`${baseUrl}/api/customers/login`, {
+      const resp = await fetchWithAuth('/api/customers/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       })
-      if (!resp.ok) return false
       const data = await resp.json()
-      localStorage.setItem('customerToken', data.token)
+      if (data.customer) setCustomer(data.customer)
+      if (data.token) localStorage.setItem('customerToken', data.token)
       await refreshProfile()
       return true
     } catch (e) { return false }
   }
 
-  const logoutCustomer = () => { setCustomer(null); setCart([]) }
+  const logoutCustomer = async () => { 
+    try {
+      await fetchWithAuth('/api/customers/logout', { method: 'POST' })
+    } catch (e) { console.error(e) }
+    setCustomer(null); 
+    setCart([]) 
+    localStorage.removeItem('customer')
+    localStorage.removeItem('customerToken')
+  }
 
   const addToCart = (item: Omit<CartItem, 'quantity'>) => {
     setCart((prev) => {
@@ -157,15 +164,9 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
 
   const placeOrder = async (paymentMethod: string): Promise<Order | null> => {
     if (!customer || cart.length === 0) return null
-    const baseUrl = getBaseUrl()
-    const token = localStorage.getItem('customerToken')
     try {
-      const resp = await fetch(`${baseUrl}/api/customers/orders`, {
+      const resp = await fetchWithAuth('/api/customers/orders', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({
           items: cart.map(i => ({ productId: i.productId, qty: i.quantity, price: i.price })),
           total: cartTotal,
@@ -177,22 +178,13 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
       if (!resp.ok) {
         const err = await resp.json()
         alert(err.error || 'Error al procesar el pedido')
-        delete (window as any)._pendingPaymentRef
-        delete (window as any)._pendingPaymentProof
         return null
       }
       const order = await resp.json()
       setOrders(prev => [order, ...prev])
       setCart([])
-      // Clear pending
-      delete (window as any)._pendingPaymentRef
-      delete (window as any)._pendingPaymentProof
       return order
-    } catch (e) {
-      delete (window as any)._pendingPaymentRef
-      delete (window as any)._pendingPaymentProof
-      return null
-    }
+    } catch (e) { return null }
   }
 
   const updateCustomer = (data: Customer) => {

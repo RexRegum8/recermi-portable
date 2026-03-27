@@ -25,6 +25,7 @@ export function OrderManager() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'PENDING' | 'HISTORY'>('PENDING')
+  const [showProof, setShowProof] = useState<string | null>(null)
 
   const fetchOrders = async () => {
     const baseUrl = getBaseUrl()
@@ -136,7 +137,7 @@ export function OrderManager() {
                       <p className="font-black text-xs text-slate-300 uppercase">{order.paymentMethod}</p>
                       {order.paymentRef && <p className="text-[11px] font-mono text-slate-500 mt-1">Ref: {order.paymentRef}</p>}
                       {order.paymentProof && (
-                        <button onClick={() => window.open(order.paymentProof)} className="mt-3 text-[9px] font-black text-blue-400 hover:text-blue-300 uppercase tracking-tighter flex items-center gap-1 transition-all">
+                        <button onClick={() => setShowProof(order.paymentProof!)} className="mt-3 text-[9px] font-black text-blue-400 hover:text-blue-300 uppercase tracking-tighter flex items-center gap-1 transition-all">
                           <span className="text-sm">🖼️</span> Ver Comprobante
                         </button>
                       )}
@@ -163,6 +164,22 @@ export function OrderManager() {
           </div>
         ))}
       </div>
+      {showProof && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[200] flex items-center justify-center p-6" onClick={() => setShowProof(null)}>
+           <div className="bg-slate-900 border border-slate-700 rounded-[3rem] p-4 max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center relative shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+              <button 
+                onClick={() => setShowProof(null)}
+                className="absolute top-6 right-6 w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-xl hover:bg-red-600 transition-colors z-10"
+              >
+                ×
+              </button>
+              <div className="w-full flex-1 overflow-auto flex items-center justify-center p-4">
+                <img src={showProof} className="max-w-full max-h-full object-contain rounded-xl" />
+              </div>
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest py-4">Comprobante de Pago Adjunto</p>
+           </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -16,6 +16,7 @@ export function UserProfileModal({ user, onClose, onSave, readOnly = false }: Us
   const [attLoading, setAttLoading] = useState(false)
   const [showAbsenceForm, setShowAbsenceForm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
   const [newAbsence, setNewAbsence] = useState({ date: new Date().toISOString().split('T')[0], reason: '', isJustified: false })
 
   const fetchFullDetails = async () => {
@@ -40,7 +41,7 @@ export function UserProfileModal({ user, onClose, onSave, readOnly = false }: Us
     setFormData((prev: any) => ({ ...prev, [perm]: !prev[perm] }))
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'photo' | 'dataFile') => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 10 * 1024 * 1024) { // Increase to 10MB
@@ -50,7 +51,7 @@ export function UserProfileModal({ user, onClose, onSave, readOnly = false }: Us
     const reader = new FileReader()
     reader.onload = (event) => {
       const base64 = event.target?.result as string
-      setFormData((prev: any) => ({ ...prev, dataFile: base64 }))
+      setFormData((prev: any) => ({ ...prev, [type]: base64 }))
     }
     reader.readAsDataURL(file)
   }
@@ -131,15 +132,33 @@ export function UserProfileModal({ user, onClose, onSave, readOnly = false }: Us
         <div className="flex-1 flex flex-col md:flex-row p-6 sm:p-10 gap-8 md:gap-12 overflow-hidden">
           {/* Avatar & Side Info */}
           <div className="w-full md:w-48 flex flex-col items-center flex-shrink-0">
-            <div className="w-32 h-32 sm:w-40 sm:h-40 bg-slate-100 rounded-[2.5rem] flex items-center justify-center text-6xl shadow-inner mb-6 relative overflow-hidden border-4 border-white ring-1 ring-slate-100">
+            <div className="w-32 h-32 sm:w-40 sm:h-40 bg-slate-100 rounded-[2.5rem] flex items-center justify-center text-6xl shadow-inner mb-6 relative group overflow-hidden border-4 border-white ring-1 ring-slate-100">
               {formData.photo ? <img src={formData.photo} className="w-full h-full object-cover" /> : formData.avatar}
+              {!readOnly && (
+                <button 
+                  onClick={() => photoInputRef.current?.click()}
+                  className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-3xl"
+                >
+                  📷
+                </button>
+              )}
+              <input type="file" ref={photoInputRef} hidden onChange={e => handleFileChange(e, 'photo')} accept="image/*" />
             </div>
             <div className="w-full space-y-2">
               <div className="bg-slate-900 text-white p-3 rounded-2xl text-[10px] text-center font-black uppercase tracking-widest shadow-lg">
                 {formData.role}
               </div>
-              <div className="bg-slate-100 border border-slate-200 p-3 rounded-2xl text-[10px] text-center font-bold text-slate-500 shadow-sm">
-                @{formData.username}
+              <div className="bg-slate-100 border border-slate-200 p-3 rounded-2xl text-[10px] text-center font-bold text-slate-500 shadow-sm flex items-center justify-center gap-2">
+                <span>@{formData.username}</span>
+                {!readOnly && (
+                    <select 
+                      value={formData.avatar} 
+                      onChange={e => handleChange('avatar', e.target.value)}
+                      className="bg-transparent border-none outline-none cursor-pointer text-sm"
+                    >
+                        {['👤', '👨‍💼', '👩‍💼', '👨‍🔧', '👩‍🔧', '👨‍💻', '👩‍💻', '🛒', '📦', '🛠️', '💎'].map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                )}
               </div>
             </div>
           </div>
@@ -213,7 +232,7 @@ export function UserProfileModal({ user, onClose, onSave, readOnly = false }: Us
                         <span>👁️ VER DOCUMENTO</span>
                       </button>
                     )}
-                    <input type="file" ref={fileInputRef} hidden onChange={handleFileChange} accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+                    <input type="file" ref={fileInputRef} hidden onChange={e => handleFileChange(e, 'dataFile')} accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
                   </div>
                 </div>
               </div>

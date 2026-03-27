@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useAuth } from '../auth/AuthContext'
 import { useSales, SaleRecord } from '../store/SalesContext'
@@ -6,7 +6,7 @@ import { useProductStore } from '../store/ProductStore'
 import { getBaseUrl } from '../utils/api'
 
 interface CartItem {
-  id: string; sku: string; name: string; price: number; quantity: number; discount: number; warrantyDays: number; stock: number
+  id: string; sku: string; name: string; price: number; quantity: number; discount: number; warrantyDays: number; stock: number; image: string
 }
 
 type PaymentMethod = 'efectivo_usd' | 'efectivo_bs' | 'tarjeta' | 'zelle' | 'pago_movil' | 'mixto'
@@ -25,13 +25,15 @@ export function POSComponent() {
   const { products, refreshProducts } = useProductStore()
   
   const [cart, setCart] = useState<CartItem[]>([])
-  const [query, setQuery] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('efectivo_usd')
   const [globalDiscount, setGlobalDiscount] = useState(0)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showQR, setShowQR] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos')
   const [mixedBreakdown, setMixedBreakdown] = useState<{ usd: number; bs: number; methodBs: string }>({ usd: 0, bs: 0, methodBs: 'pago_movil' })
+  const [showProductDetail, setShowProductDetail] = useState<any | null>(null)
+  const [paymentProof, setPaymentProof] = useState<string | null>(null)
+  const proofInputRef = useRef<HTMLInputElement>(null)
 
   // Customer Linking
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null)
@@ -62,9 +64,20 @@ export function POSComponent() {
     fetchCustomers()
   }, [])
 
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
   useEffect(() => {
     if (custQuery.length > 1) {
-      setFilteredCust(customers.filter((c: any) => c.name?.toLowerCase().includes(custQuery.toLowerCase()) || (c.cedula && c.cedula.includes(custQuery)) || (c.email && c.email?.toLowerCase().includes(custQuery.toLowerCase()))))
+      const timer = setTimeout(() => {
+        setFilteredCust(customers.filter((c: any) => c.name?.toLowerCase().includes(custQuery.toLowerCase()) || (c.cedula && c.cedula.includes(custQuery)) || (c.email && c.email?.toLowerCase().includes(custQuery.toLowerCase()))))
+      }, 300)
+      return () => clearTimeout(timer)
     } else {
       setFilteredCust([])
     }
@@ -110,11 +123,22 @@ export function POSComponent() {
     setIsEditingUSDT(false)
   }
 
-  const addToCart = (sku: string) => {
-    const product = products.find((p) => p.sku?.toLowerCase() === sku.toLowerCase() || p.name?.toLowerCase().includes(sku.toLowerCase()))
-    if (!product) return
-    
+  const addToCart = (itemOrSku: any) => {
+    console.log(`[FRONTEND-POS] Attempting to add item to cart: ${typeof itemOrSku === 'string' ? itemOrSku : itemOrSku.name}`)
+    const product = typeof itemOrSku === 'string' 
+      ? products.find(p => p.sku?.toLowerCase() === itemOrSku.toLowerCase() || p.name?.toLowerCase().includes(itemOrSku.toLowerCase())) 
+      : itemOrSku
+
+    if (!product) {
+      if (typeof itemOrSku === 'string' && itemOrSku.length > 0) {
+          console.warn(`[FRONTEND-POS] Product not found: ${itemOrSku}`)
+          alert('Producto no encontrado')
+      }
+      return
+    }
+
     if (product.stock <= 0) {
+      console.warn(`[FRONTEND-POS] Out of stock: ${product.name}`)
       alert(`El producto ${product.name} no tiene stock disponible.`)
       return
     }
@@ -123,14 +147,25 @@ export function POSComponent() {
       const ex = prev.find((i) => i.id === product.id)
       if (ex) {
         if (ex.quantity + 1 > product.stock) {
+          console.warn(`[FRONTEND-POS] Insufficient stock: ${product.name}`)
           alert(`Stock insuficiente para ${product.name}.`)
           return prev
         }
+        console.log(`[FRONTEND-POS] Incrementing quantity for ${product.name}`)
         return prev.map((i) => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i)
       }
+      console.log(`[FRONTEND-POS] Added ${product.name} to cart`)
       return [...prev, { ...product, quantity: 1, discount: 0, warrantyDays: product.warrantyDays || 30, stock: product.stock } as CartItem]
     })
-    setQuery('')
+    setSearchQuery('')
+  }
+  
+  const handleProofChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (event) => setPaymentProof(event.target?.result as string)
+    reader.readAsDataURL(file)
   }
 
   const updateCartItem = (id: string, updates: Partial<CartItem>) => {
@@ -161,6 +196,7 @@ export function POSComponent() {
 
   const processSale = async () => {
     if (cart.length === 0) return
+    console.log('[FRONTEND-POS] Processing sale...')
     const now = new Date()
     const saleId = `V-${String(dailySales.length + 1).padStart(4, '0')}`
 
@@ -182,18 +218,22 @@ export function POSComponent() {
       cashier: user?.name || '',
       date: now.toISOString().split('T')[0],
       time: now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      customerId: selectedCustomer?.id || null
+      customerId: selectedCustomer?.id || null,
+      paymentProof: paymentProof || undefined
     }
     
     try {
       await addSale(record)
+      console.log(`[FRONTEND-POS] Sale ${saleId} completed successfully`)
       await refreshProducts()
       setCart([])
       setGlobalDiscount(0)
       setSelectedCustomer(null)
+      setPaymentProof(null)
       setShowPaymentModal(false)
       setShowQR(saleId)
     } catch (e: any) {
+      console.error(`[FRONTEND-POS] Sale processing failed: ${e.message}`)
       alert(e.message || 'Error al procesar la venta.')
     }
   }
@@ -228,10 +268,15 @@ export function POSComponent() {
           <table>
             <thead><tr><th align="left">Desc.</th><th align="right">Total</th></tr></thead>
             <tbody>${itemsHtml}</tbody>
-            <tr class="total-row"><td style="padding-top: 10px;">TOTAL USD</td><td align="right" style="padding-top: 10px;">$${total.toFixed(2)}</td></tr>
-            <tr><td>Total Bs (BCV)</td><td align="right">${totalBs.toFixed(2)}</td></tr>
-            <tr><td>Total USDT</td><td align="right">${totalUSDT.toFixed(2)}</td></tr>
           </table>
+          <div style="border-top: 1px dashed #ccc; margin-top: 10px; padding-top: 5px; font-size: 11px; font-family: monospace;">
+            <div style="display: flex; justify-content: space-between;"><span>Subtotal:</span><span>$${subtotal.toFixed(2)}</span></div>
+            ${globalDiscount > 0 ? `<div style="display: flex; justify-content: space-between;"><span>Descuento (${globalDiscount}%):</span><span>-$${discountAmt.toFixed(2)}</span></div>` : ''}
+            <div style="display: flex; justify-content: space-between;"><span>IVA (${ivaPercent}%):</span><span>$${iva.toFixed(2)}</span></div>
+            <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; margin-top: 5px; border-top: 1px solid #000; padding-top: 5px;"><span>TOTAL USD:</span><span>$${total.toFixed(2)}</span></div>
+            <div style="display: flex; justify-content: space-between; margin-top: 3px;"><span>Total Bs:</span><span>${totalBs.toFixed(2)} Bs</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Total USDT:</span><span>${totalUSDT.toFixed(2)}</span></div>
+          </div>
           <div class="footer">¡Gracias por preferirnos!<br>Conserve su recibo para la garantía.</div>
           <script>window.print(); window.close();</script>
         </body>
@@ -240,10 +285,10 @@ export function POSComponent() {
     printWindow.document.close()
   }
 
-  const filteredItems = query.length > 0 ? products.filter((p) => 
-    p.sku?.toLowerCase().includes(query.toLowerCase()) || 
-    p.name?.toLowerCase().includes(query.toLowerCase()) || 
-    p.tags?.some(t => t?.toLowerCase().includes(query.toLowerCase()))
+  const filteredItems = debouncedQuery.length > 0 ? products.filter((p) => 
+    p.sku?.toLowerCase().includes(debouncedQuery.toLowerCase()) || 
+    p.name?.toLowerCase().includes(debouncedQuery.toLowerCase()) || 
+    p.tags?.some(t => t?.toLowerCase().includes(debouncedQuery.toLowerCase()))
   ) : []
 
   return (
@@ -289,18 +334,26 @@ export function POSComponent() {
         <section className="flex-1 flex flex-col bg-slate-900/40 rounded-xl border border-slate-800 overflow-hidden">
           <div className="p-3 border-b border-slate-800">
             <input type="text" placeholder="🔍 Buscar producto..." className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addToCart(query)} />
-            {filteredItems.length > 0 && query.length > 1 && (
+              value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addToCart(searchQuery)} />
+            {filteredItems.length > 0 && searchQuery.length > 1 && (
               <div className="absolute mt-1 left-0 right-0 mx-4 z-50 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl overflow-hidden max-h-60 overflow-y-auto">
                 {filteredItems.map(p => (
-                  <div key={p.id} onClick={() => addToCart(p.sku)} className="p-2 hover:bg-blue-600/20 cursor-pointer flex justify-between border-b border-slate-700/50 last:border-0">
-                    <div className="text-xs">
-                      <div className="font-bold">{p.name}</div>
-                      <div className="text-[9px] text-slate-500">{p.sku} | {p.category}</div>
+                  <div key={p.id} className="p-2 hover:bg-blue-600/20 cursor-pointer flex justify-between items-center border-b border-slate-700/50 last:border-0 group">
+                    <div className="flex items-center gap-3 flex-1" onClick={() => addToCart(p)}>
+                      <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center overflow-hidden border border-slate-600 shrink-0">
+                         {p.image?.startsWith('data:image') ? <img src={p.image} className="w-full h-full object-cover" /> : <span className="text-sm">{p.image || '📦'}</span>}
+                      </div>
+                      <div className="text-xs">
+                        <div className="font-bold">{p.name}</div>
+                        <div className="text-[9px] text-slate-500">{p.sku} | {p.category}</div>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-green-400 font-bold">${p.price}</div>
-                      <div className="text-[9px] text-slate-500">Stock: {p.stock}</div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-green-400 font-bold text-xs">${p.price}</div>
+                        <div className="text-[9px] text-slate-500">S: {p.stock}</div>
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); setShowProductDetail(p) }} className="p-1.5 bg-slate-700/50 hover:bg-blue-500 rounded-lg text-[10px] opacity-0 group-hover:opacity-100 transition-all">ℹ️</button>
                     </div>
                   </div>
                 ))}
@@ -330,8 +383,15 @@ export function POSComponent() {
                   {cart.map(i => (
                     <tr key={i.id} className="hover:bg-slate-800/10 group">
                       <td className="py-2.5">
-                        <div className="font-bold text-[13px]">{i.name}</div>
-                        <div className="text-[9px] text-slate-500 font-mono">{i.sku}</div>
+                        <div className="flex items-center gap-3">
+                           <button onClick={() => setShowProductDetail(products.find(p => p.id === i.id))} className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden border border-slate-700 shrink-0 hover:border-blue-500 transition-all">
+                              {i.image?.startsWith('data:image') ? <img src={i.image} className="w-full h-full object-cover" /> : <span className="text-lg">{i.image || '📦'}</span>}
+                           </button>
+                           <div>
+                              <div className="font-bold text-[13px]">{i.name}</div>
+                              <div className="text-[9px] text-slate-500 font-mono">{i.sku}</div>
+                           </div>
+                        </div>
                       </td>
                       <td className="py-2.5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
@@ -516,6 +576,25 @@ export function POSComponent() {
                 </div>
               )}
 
+              {['zelle', 'pago_movil', 'mixto', 'transferencia'].includes(paymentMethod) && (
+                <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 space-y-3">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Comprobante de Pago</p>
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => proofInputRef.current?.click()}
+                      className={`flex-1 py-3 rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-1 ${paymentProof ? 'bg-green-600/10 border-green-500/50 text-green-400' : 'bg-slate-950 border-slate-800 text-slate-600 hover:border-slate-700'}`}
+                    >
+                      <span className="text-xl">{paymentProof ? '📸' : '📷'}</span>
+                      <span className="text-[9px] font-bold uppercase">{paymentProof ? 'Captura Lista' : 'Subir Captura / Foto'}</span>
+                    </button>
+                    {paymentProof && (
+                      <button onClick={() => setPaymentProof(null)} className="text-red-400 text-xs font-bold uppercase hover:text-red-300">Quitar</button>
+                    )}
+                  </div>
+                  <input type="file" ref={proofInputRef} hidden onChange={handleProofChange} accept="image/*" />
+                </div>
+              )}
+
               <div className="bg-slate-950/20 rounded-2xl p-4 space-y-2 border border-slate-800/50">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-500">Método de Pago:</span>
@@ -551,6 +630,35 @@ export function POSComponent() {
               <button onClick={() => setShowQR(null)} className="w-full py-2 text-slate-400 text-xs font-bold hover:text-slate-800">CERRAR</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {showProductDetail && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[200] p-6" onClick={() => setShowProductDetail(null)}>
+           <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-start mb-4">
+                 <button onClick={() => setShowProductDetail(null)} className="text-2xl opacity-30 hover:opacity-100">×</button>
+              </div>
+              <div className="w-full h-48 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-center overflow-hidden mb-6 shadow-inner">
+                 {showProductDetail.image?.startsWith('data:image') ? <img src={showProductDetail.image} className="w-full h-full object-contain" /> : <span className="text-7xl">{showProductDetail.image || '📦'}</span>}
+              </div>
+              <div className="space-y-3">
+                 <div>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-blue-500">{showProductDetail.category}</span>
+                    <h2 className="text-xl font-bold leading-tight">{showProductDetail.name}</h2>
+                    <p className="text-[10px] text-slate-500 font-mono italic">{showProductDetail.sku}</p>
+                 </div>
+                 <div className="flex justify-between items-end border-y border-slate-800/50 py-3 my-4">
+                    <div><p className="text-[10px] text-slate-500 font-bold uppercase">Precio Unitario</p><p className="text-2xl font-black text-green-400 font-mono">${showProductDetail.price.toFixed(2)}</p></div>
+                    <div className="text-right"><p className="text-[10px] text-slate-500 font-bold uppercase">Existencia</p><p className={`text-sm font-black font-mono ${showProductDetail.stock <= showProductDetail.minStock ? 'text-red-400' : 'text-white'}`}>{showProductDetail.stock} und.</p></div>
+                 </div>
+                 <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 min-h-[100px]">
+                    <p className="text-[10px] font-black uppercase text-slate-600 mb-2 tracking-[0.2em]">Descripción</p>
+                    <p className="text-xs text-slate-300 leading-relaxed italic">{showProductDetail.description || 'Sin descripción detallada.'}</p>
+                 </div>
+                 <button onClick={() => { addToCart(showProductDetail); setShowProductDetail(null) }} className="w-full bg-blue-600 hover:bg-blue-700 py-3.5 rounded-2xl font-black text-xs shadow-lg shadow-blue-900/40 mt-4">AGREGAR AL CARRITO</button>
+              </div>
+           </div>
         </div>
       )}
     </div>

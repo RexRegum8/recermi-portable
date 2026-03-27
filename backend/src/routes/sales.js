@@ -3,16 +3,52 @@ import { prisma } from '../db.js'
 
 const router = express.Router()
 
+// Get all sales with pagination
+router.get('/', async (req, res) => {
+  const page = parseInt(req.query.page) || 1
+  const limit = parseInt(req.query.limit) || 50
+  const skip = (page - 1) * limit
+  
+  console.log(`[SALES] Fetching sales (Page: ${page}, Limit: ${limit})...`)
+  try {
+    const [sales, total] = await Promise.all([
+      prisma.sale.findMany({
+        skip,
+        take: limit,
+        include: { items: { include: { product: true } } },
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.sale.count()
+    ])
+    
+    res.json({
+      data: sales,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    })
+  } catch (e) {
+    console.error(`[SALES] Error fetching sales: ${e.message}`)
+    res.status(500).json({ error: 'Error al obtener ventas' })
+  }
+})
+
 // Get sales by session
 router.get('/session/:sessionId', async (req, res) => {
+  console.log(`[SALES] Fetching sales for session ID: ${req.params.sessionId}`)
   try {
     const sales = await prisma.sale.findMany({
       where: { sessionId: req.params.sessionId },
       include: { items: { include: { product: true } } },
       orderBy: { createdAt: 'desc' }
     })
+    console.log(`[SALES] Successfully fetched ${sales.length} sales`)
     res.json(sales)
   } catch (e) {
+    console.error(`[SALES] Error fetching sales: ${e.message}`)
     res.status(500).json({ error: 'Error al obtener ventas' })
   }
 })
@@ -20,6 +56,7 @@ router.get('/session/:sessionId', async (req, res) => {
 // Cash Closure
 router.post('/closure', async (req, res) => {
   const { totalSales, totalItems, totalAmountUsd, totalAmountBs, ivaTotal, details, cashier } = req.body
+  console.log(`[SALES] Recording cash closure by cashier: ${cashier}`)
   try {
     const closure = await prisma.closure.create({
       data: {
@@ -28,15 +65,18 @@ router.post('/closure', async (req, res) => {
         cashier
       }
     })
+    console.log(`[SALES] Cash closure recorded successfully: ${closure.id}`)
     res.status(201).json(closure)
   } catch (e) {
+    console.error(`[SALES] Error recording cash closure: ${e.message}`)
     res.status(400).json({ error: 'Error al registrar cierre de caja' })
   }
 })
 
 // Register a sale
 router.post('/', async (req, res) => {
-  const { saleNumber, items, subtotal, globalDiscount, iva, total, totalBs, paymentMethod, paymentRef, cashier, date, time, customerId } = req.body
+  const { saleNumber, items, subtotal, globalDiscount, iva, total, totalBs, paymentMethod, paymentRef, paymentProof, cashier, date, time, customerId } = req.body
+  console.log(`[SALES] Registering sale: ${saleNumber} by cashier: ${cashier}`)
   try {
     const sale = await prisma.$transaction(async (tx) => {
       // Find active session
@@ -45,7 +85,10 @@ router.post('/', async (req, res) => {
         orderBy: { openedAt: 'desc' }
       })
 
-      if (!activeSession) throw new Error('No hay una sesión de caja abierta')
+      if (!activeSession) {
+        console.warn('[SALES] Sale failed: No open cash session')
+        throw new Error('No hay una sesión de caja abierta')
+      }
 
       const config = await tx.systemConfig.findFirst() || { fidelityEnabled: false, ptsPer10Usd: 1 }
 
@@ -66,7 +109,7 @@ router.post('/', async (req, res) => {
       // 1. Create Sale
       const createdSale = await tx.sale.create({
         data: {
-          saleNumber: finalSaleNumber, subtotal, globalDiscount, iva, total, totalBs, paymentMethod, paymentRef, cashier, date, time,
+          saleNumber: finalSaleNumber, subtotal, globalDiscount, iva, total, totalBs, paymentMethod, paymentRef, paymentProof, cashier, date, time,
           sessionId: activeSession?.id,
           customerId: customerId || null,
           items: {
@@ -127,9 +170,22 @@ router.post('/', async (req, res) => {
 
       return createdSale
     })
+    console.log(`[SALES] Sale registered successfully: ${sale.saleNumber}`)
+    
+    // Emit socket events
+    const io = req.app.get('io')
+    if (io) {
+      io.emit('sale-created', sale)
+      // Also emit individual stock updates for products
+      for (const item of items) {
+         const p = await prisma.product.findUnique({ where: { id: item.productId }, select: { stock: true } })
+         if (p) io.emit('product-stock-updated', { productId: item.productId, newStock: p.stock })
+      }
+    }
+    
     res.status(201).json(sale)
   } catch (e) {
-    console.error(e)
+    console.error(`[SALES] Error registering sale: ${e.message}`)
     res.status(400).json({ error: e.message || 'Error al registrar venta' })
   }
 })

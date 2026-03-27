@@ -72,12 +72,8 @@ export function LoginScreen() {
           <div className="space-y-4">
             {needsSetup && (
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-2">
-                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Primer Inicio Detectado</p>
-                <p className="text-xs text-slate-400">Este equipo no está configurado. ¿Cómo trabajarás hoy?</p>
-                <div className="grid grid-cols-2 gap-2 mt-3">
-                   <button type="button" onClick={() => localStorage.removeItem('rexermi_config')} className="bg-slate-800 hover:bg-slate-700 py-2 rounded-lg text-[10px] font-bold border border-slate-700">🖥️ SERVIDOR LOCAL</button>
-                   <button type="button" onClick={() => { localStorage.removeItem('rexermi_config'); window.location.reload() }} className="bg-slate-800 hover:bg-slate-700 py-2 rounded-lg text-[10px] font-bold border border-slate-700">💻 TERMINAL RED</button>
-                </div>
+                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Configuración Inicial</p>
+                <p className="text-xs text-slate-400">Por favor, cree la cuenta de administrador para comenzar a usar el sistema.</p>
               </div>
             )}
             

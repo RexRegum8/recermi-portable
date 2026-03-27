@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react'
-import { getBaseUrl } from '../utils/api'
+import { getBaseUrl, fetchWithAuth } from '../utils/api'
 
 export type UserRole = 'admin' | 'supervisor' | 'empleado'
 
@@ -32,8 +32,12 @@ export interface SystemConfig {
   storePhone: string
   catalogUrl: string
   companyLogo?: string
+  tunnelMode: string
+  tunnelToken?: string
+  customDomain?: string
   fidelityEnabled: boolean
   ptsPer10Usd: number
+  defaultWarrantyDays: number
 }
 
 interface AuthContextType {
@@ -44,6 +48,7 @@ interface AuthContextType {
   updateConfig: (patch: Partial<SystemConfig>) => void
   login: (username: string, password: string) => Promise<boolean>
   logout: () => void
+  setupServer: (config: { mode: 'SERVER' | 'CLIENT', serverIp: string }) => Promise<void>
   refreshSetup: () => Promise<void>
   refreshConfig: () => Promise<void>
   refreshUsers: () => Promise<void>
@@ -72,10 +77,14 @@ const DEFAULT_CONFIG: SystemConfig = {
   storeRIF: 'J-12345678-9',
   storeAddress: 'Av. Principal, Centro Comercial Plaza, Local 12',
   storePhone: '0414-1234567',
-  catalogUrl: 'http://localhost:5173/?catalog=true',
+  catalogUrl: `${getBaseUrl()}/?catalog=true`,
   companyLogo: '',
+  tunnelMode: 'auto',
+  tunnelToken: '',
+  customDomain: '',
   fidelityEnabled: false,
-  ptsPer10Usd: 1
+  ptsPer10Usd: 1,
+  defaultWarrantyDays: 30
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -89,22 +98,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null)
   const [config, setConfig] = useState<SystemConfig>(DEFAULT_CONFIG)
   const [isServerReady, setIsServerReady] = useState(false)
+  const [setupConfig, setSetupConfig] = useState<{ mode: 'SERVER' | 'CLIENT', serverIp: string } | null>(() => {
+    const saved = localStorage.getItem('rexermi_config')
+    return saved ? JSON.parse(saved) : null
+  })
 
   const refreshConfig = async () => {
-    const baseUrl = getBaseUrl()
     try {
-      const resp = await fetch(`${baseUrl}/api/config`)
+      const resp = await fetchWithAuth('/api/config')
       const data = await resp.json()
-      if (data && !data.error) setConfig(data)
+      if (data && !data.error) {
+        setConfig(data)
+        // Resume custom tunnel on startup if configured
+        if (data.tunnelMode === 'custom' && data.tunnelToken) {
+          (window as any).electronAPI?.updateTunnelConfig({ 
+            mode: 'custom', 
+            token: data.tunnelToken 
+          })
+        }
+      }
     } catch (e) {
       console.error('Error fetching config:', e)
     }
   }
 
   const refreshSetup = async () => {
-    const baseUrl = getBaseUrl()
     try {
-      const resp = await fetch(`${baseUrl}/api/auth/needs-setup`)
+      const resp = await fetchWithAuth('/api/auth/needs-setup')
       const data = await resp.json()
       setNeedsSetup(data.needsSetup ?? true)
     } catch (e) {
@@ -116,32 +136,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true
     const checkServer = async () => {
+      // If we don't have a setup config yet, we can't check the server properly
+      if (!setupConfig) {
+        setNeedsSetup(true)
+        setIsServerReady(true) // Ready to show the SetupWizard
+        return
+      }
+
       const baseUrl = getBaseUrl()
+      console.log(`[AUTH] Checking server at ${baseUrl} (Mode: ${setupConfig.mode})`)
+      
       while (mounted) {
         try {
-          const resp = await fetch(`${baseUrl}/api/health`)
+          const resp = await fetchWithAuth('/api/health')
           if (resp.ok) {
             if (mounted) {
-              const setupResp = await fetch(`${baseUrl}/api/auth/needs-setup`)
+              const setupResp = await fetchWithAuth('/api/auth/needs-setup')
               const setupData = await setupResp.json()
               const isSetupNeeded = setupData.needsSetup ?? true
               setNeedsSetup(isSetupNeeded)
               
               if (isSetupNeeded) {
-                // If the DB is empty, the current session is definitely invalid
                 localStorage.removeItem('user')
                 setUser(null)
               }
               
               await refreshConfig()
               
-              // Validate current session if exists
               if (user) {
                 try {
-                  const uResp = await fetch(`${baseUrl}/api/auth/${user.id}`)
-                  if (!uResp.ok) {
-                    logout()
-                  }
+                  const uResp = await fetchWithAuth(`/api/auth/${user.id}`)
+                  if (!uResp.ok) logout()
                 } catch (e) { logout() }
               }
               
@@ -151,19 +176,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } catch (e) {
           console.error('[Health Check Failed]', e)
-          // Wait 500ms before retrying if server is still starting
-          await new Promise(r => setTimeout(r, 500))
+          await new Promise(r => setTimeout(r, 1000))
         }
       }
     }
     checkServer()
     return () => { mounted = false }
-  }, [])
+  }, [setupConfig])
 
   const refreshUsers = async () => {
-    const baseUrl = getBaseUrl()
     try {
-      const resp = await fetch(`${baseUrl}/api/auth`)
+      const resp = await fetchWithAuth('/api/auth')
       const data = await resp.json()
       setUsers(data)
     } catch (e) {
@@ -176,62 +199,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user])
 
   const registerUser = async (userData: any) => {
-    const baseUrl = getBaseUrl()
-    await fetch(`${baseUrl}/api/auth/register`, {
+    const resp = await fetchWithAuth('/api/auth/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userData)
     })
+    const data = await resp.json()
+    if (data.token) localStorage.setItem('auth_token', data.token)
     await refreshUsers()
   }
 
   const updateUser = async (id: string, userData: any) => {
-    const baseUrl = getBaseUrl()
-    await fetch(`${baseUrl}/api/auth/${id}`, {
+    const resp = await fetchWithAuth(`/api/auth/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userData)
     })
-    await refreshUsers()
+    
+    if (resp.ok) {
+      const updatedUser = await resp.json()
+      // If we updated the current user, update the state and localStorage
+      if (user && id === user.id) {
+        setUser(updatedUser)
+        localStorage.setItem('user', JSON.stringify(updatedUser))
+      }
+      await refreshUsers()
+    }
   }
 
   const deleteUser = async (id: string) => {
-    const baseUrl = getBaseUrl()
-    await fetch(`${baseUrl}/api/auth/${id}`, { method: 'DELETE' })
+    await fetchWithAuth(`/api/auth/${id}`, { method: 'DELETE' })
     await refreshUsers()
   }
 
   const login = async (username: string, password: string): Promise<boolean> => {
-    const baseUrl = getBaseUrl()
-    
     try {
-      const resp = await fetch(`${baseUrl}/api/auth/login`, {
+      const resp = await fetchWithAuth('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       })
       if (!resp.ok) return false
       const data = await resp.json()
+      
+      // Save user and token
       setUser(data.user)
       localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('token', data.token)
+      if (data.token) localStorage.setItem('auth_token', data.token)
+      
       return true
     } catch (e) {
       console.error(e)
       return false
     }
   }
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await fetchWithAuth('/api/auth/logout', { method: 'POST' })
+    } catch (e) { console.error(e) }
     setUser(null)
     localStorage.removeItem('user')
-    localStorage.removeItem('token')
+    localStorage.removeItem('auth_token')
+  }
+
+  const setupServer = async (config: { mode: 'SERVER' | 'CLIENT', serverIp: string }) => {
+    localStorage.setItem('rexermi_config', JSON.stringify(config))
+    setSetupConfig(config)
+    setIsServerReady(false) // Trigger re-check
+    setNeedsSetup(null)
   }
   const updateConfig = async (patch: Partial<SystemConfig>) => {
-    const baseUrl = getBaseUrl()
     try {
-      const resp = await fetch(`${baseUrl}/api/config`, {
+      const resp = await fetchWithAuth('/api/config', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch)
       })
       const data = await resp.json()
@@ -254,7 +291,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, users, needsSetup, config, updateConfig, login, logout, 
+      user, users, needsSetup, config, updateConfig, login, logout, setupServer,
       refreshSetup, refreshConfig, refreshUsers, registerUser, updateUser, deleteUser,
       isAdmin: role === 'admin',
       isSupervisor: role === 'supervisor',
